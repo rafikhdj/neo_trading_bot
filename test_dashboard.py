@@ -96,3 +96,26 @@ def test_manual_launch_still_requires_current_backtest(tmp_path):
     with pytest.raises(ValueError, match="code actuel"):
         app.start_paper("moving_average", manual=True)
     assert app.paper.snapshot() == {}
+
+
+def test_manual_paper_after_fresh_backtest_saves_numpy_metrics(tmp_path, monkeypatch):
+    import json
+    import numpy as np
+    from paper_trading.manager import PaperManager
+
+    monkeypatch.setattr("dashboard.__main__.load_ohlcv", lambda *args: make_history())
+    app = BacktestApp(tmp_path / "results.json", paper_dir=tmp_path / "paper")
+    specs = get_strategies()
+    app.state["strategies"] = {key: {"name": spec["name"], "status": "pending"}
+                                for key, spec in specs.items()}
+    app.run(specs, app.state["config"], False)
+    assert isinstance(app.state["strategies"]["moving_average"]["result"]["summary"]["return"], np.generic)
+    # Pas de redémarrage ni de rechargement JSON entre le calcul et le lancement.
+    app.start_paper("moving_average", manual=True)
+    saved = json.loads((tmp_path / "paper" / "moving_average.json").read_text())
+    assert saved["approval"]["manual"] is True
+    assert all(type(check["passed"]) is bool for check in saved["approval"]["checks"])
+    assert saved["status"] == "running"
+    app.paper = PaperManager(tmp_path / "paper")
+    app.start_paper("moving_average", manual=True)
+    assert app.paper.snapshot()["moving_average"]["state"]["cash"] == 50

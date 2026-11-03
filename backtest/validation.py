@@ -18,6 +18,13 @@ def load_policy(path=CONFIG_PATH):
 
 
 def assess(full, validation, policy):
+    # Les résultats fraîchement calculés contiennent des scalaires NumPy.
+    # L'approbation doit rester sérialisable sans dépendre d'un rechargement JSON.
+    full, validation = [
+        {"closed_trades": int(summary["closed_trades"]),
+         "return": float(summary["return"]), "max_drawdown": float(summary["max_drawdown"])}
+        for summary in (full, validation)
+    ]
     checks = [
         {"label": "Trades clôturés au total", "passed": full["closed_trades"] >= policy["min_closed_trades"],
          "actual": full["closed_trades"], "required": policy["min_closed_trades"], "kind": "count"},
