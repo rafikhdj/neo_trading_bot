@@ -1,5 +1,6 @@
 """Une boucle commune, un portefeuille sauvegardé par stratégie. Aucun ordre réel."""
 import json
+import logging
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,13 @@ from backtest.metrics import calculate_max_drawdown, calculate_win_rate
 from data.kraken import get_ohlcv, get_ticker
 from paper_trading.engine import new_state, process_candle, save_state
 from strategies import get_strategies
+
+LOG = logging.getLogger(__name__)
+
+
+class PaperPersistenceError(ValueError):
+    """Sauvegarde incertaine : stratégie mise en pause jusqu’à résolution."""
+
 
 STATE_DIR = Path(__file__).resolve().parent / "states"
 
@@ -22,9 +30,65 @@ class PaperManager:
         self.portfolios = {}
         if state_dir.exists():
             for path in state_dir.glob("*.json"):
-                portfolio = json.loads(path.read_text())
-                portfolio["status"] = "paused"  # Reprise explicite après redémarrage.
+                portfolio = json.loads(path.read_text(encoding="utf-8"))
                 self.portfolios[path.stem] = portfolio
+                if portfolio["status"] != "paused":
+                    candidate = deepcopy(portfolio)
+                    candidate["status"] = "paused"
+                    self._event(candidate, "pause", "Redémarrage : reprise manuelle requise.")
+                    try:
+                        self._commit(path.stem, candidate)
+                    except PaperPersistenceError:
+                        pass  # L'état reste bloqué en pause et l'incident est journalisé.
+
+    @staticmethod
+    def _event(portfolio, kind, message):
+        portfolio.setdefault("events", []).append({
+            "timestamp": datetime.now(timezone.utc).isoformat(), "type": kind, "message": message,
+        })
+
+    def _commit(self, key, candidate):
+        """Appelé sous self.lock (ou à l'initialisation, avant les threads)."""
+        path = self.state_dir / f"{key}.json"
+        candidate["revision"] = self.portfolios.get(key, {}).get("revision", 0) + 1
+        try:
+            save_state(path, candidate)
+        except Exception as write_error:
+            # Une exception peut survenir APRES le remplacement : ne jamais réécrire
+            # aveuglément l'ancien portefeuille par-dessus une transaction validée.
+            try:
+                durable = json.loads(path.read_text(encoding="utf-8"))
+                required = {"config", "cash", "quantity", "last_candle", "trades", "equity", "pnl"}
+                if (not isinstance(durable.get("state"), dict)
+                        or not required.issubset(durable["state"])
+                        or durable.get("source_hash") != candidate["source_hash"]
+                        or durable.get("started_at") != candidate["started_at"]):
+                    raise ValueError("État sur disque non reconnu.")
+            except FileNotFoundError:
+                durable = deepcopy(candidate) if key not in self.portfolios else None
+            except Exception:
+                durable = None
+            recovered = deepcopy(durable if durable is not None else self.portfolios.get(key, candidate))
+            recovered.update(status="paused", error=candidate.get("error") or str(write_error),
+                             persistence_error=str(write_error), revision=candidate["revision"] + 1,
+                             message="Échec de sauvegarde : stratégie suspendue, reprise manuelle requise.")
+            recovered["events"] = deepcopy(candidate.get("events", []))
+            self._event(recovered, "persistence_error", str(write_error))
+            self._event(recovered, "pause", "Sauvegarde incertaine : exécution suspendue.")
+            recovered["persistence_uncertain"] = durable is None
+            if durable is not None:
+                try:
+                    save_state(path, recovered)
+                except Exception as incident_error:
+                    recovered["persistence_uncertain"] = True
+                    recovered["incident_save_error"] = str(incident_error)
+            self.portfolios[key] = recovered
+            message = f"{recovered['error']} ; sauvegarde : {write_error}"
+            if recovered.get("incident_save_error"):
+                message += f" ; sauvegarde de l'incident : {recovered['incident_save_error']}"
+            LOG.error("Paper %s mis en pause : %s", key, message)
+            raise PaperPersistenceError(message) from write_error
+        self.portfolios[key] = candidate
 
     def start_worker(self):
         self.thread = Thread(target=self.loop, daemon=True)
@@ -42,6 +106,8 @@ class PaperManager:
         with self.lock:
             existing = self.portfolios.get(key)
             if existing:
+                if existing.get("persistence_uncertain"):
+                    raise PaperPersistenceError("État incertain : rétablir le disque puis redémarrer pour relire l'état durable.")
                 if existing["source_hash"] != spec["source_hash"]:
                     raise ValueError("Code modifié : le portefeuille existant ne peut pas changer de stratégie.")
                 previous_config = deepcopy(existing["state"]["config"])
@@ -51,7 +117,8 @@ class PaperManager:
                 if previous_config != next_config:
                     raise ValueError("Configuration différente du portefeuille existant ; conserver les mêmes paramètres.")
                 portfolio = deepcopy(existing)
-                portfolio.update(status="running", error=None)
+                portfolio.update(status="running", error=None, persistence_error=None, message=None)
+                portfolio.pop("incident_save_error", None)
                 if approval.get("manual"):
                     portfolio["approval"] = deepcopy(approval)
             else:
@@ -61,17 +128,21 @@ class PaperManager:
                     "state": state, "approval": deepcopy(approval), "error": None,
                     "started_at": datetime.now(timezone.utc).isoformat(), "last_poll": None,
                 }
-            save_state(self.state_dir / f"{key}.json", portfolio)
-            self.portfolios[key] = portfolio
+            self._event(portfolio, "resume" if existing else "start", "Lancement manuel du paper.")
+            self._commit(key, portfolio)
 
-    def pause(self, key):
+    def pause(self, key, reason="Pause manuelle.", error=None):
         with self.lock:
             if key not in self.portfolios:
                 raise ValueError("Portefeuille paper introuvable.")
+            if self.portfolios[key].get("persistence_uncertain"):
+                raise PaperPersistenceError("Déjà en pause : rétablir le disque puis redémarrer pour confirmer l’état.")
             portfolio = deepcopy(self.portfolios[key])
             portfolio["status"] = "paused"
-            save_state(self.state_dir / f"{key}.json", portfolio)
-            self.portfolios[key] = portfolio
+            if error is not None:
+                portfolio["error"] = error
+            self._event(portfolio, "pause", reason)
+            self._commit(key, portfolio)
 
     def snapshot(self):
         with self.lock:
@@ -94,14 +165,23 @@ class PaperManager:
             active = {key: deepcopy(p) for key, p in self.portfolios.items() if p["status"] == "running"}
         if not active:
             return
-        specs = get_strategies()
+        try:
+            specs = get_strategies()
+        except Exception as error:
+            for key in active:
+                try:
+                    self.pause(key, reason="Chargement des stratégies impossible.", error=str(error))
+                except PaperPersistenceError:
+                    pass
+            return
         market = {}  # Un appel OHLC + ticker par paire/intervalle, partagé entre stratégies.
         for key, portfolio in active.items():
             try:
                 spec = specs.get(key)
                 if not spec or spec.get("error") or spec["source_hash"] != portfolio["source_hash"]:
-                    self.pause(key)
-                    raise ValueError("Code de stratégie modifié : paper mis en pause.")
+                    reason = "Code de stratégie modifié : paper mis en pause."
+                    self.pause(key, reason=reason, error=reason)
+                    continue
                 state = portfolio["state"]
                 config = state["config"]
                 group = (config["symbol"], config["interval"])
@@ -111,19 +191,34 @@ class PaperManager:
                 updated = process_candle(state, data, ticker, now=now, strategy_fn=spec["function"])
                 with self.lock:
                     current = self.portfolios[key]
-                    if current["status"] != "running" or self.stop_event.is_set():
-                        continue
-                    current["last_poll"] = datetime.now(timezone.utc).isoformat()
-                    current["error"] = None
-                    if updated is not state:
-                        candidate = {**current, "message": None, "state": updated}
-                        save_state(self.state_dir / f"{key}.json", candidate)
-                        self.portfolios[key] = candidate
+                    if (current["status"] != "running" or self.stop_event.is_set()
+                            or current.get("revision", 0) != portfolio.get("revision", 0)):
+                        continue  # Pause/reprise ou autre tick validé pendant le calcul.
+                    candidate = deepcopy(current)
+                    candidate["last_poll"] = datetime.now(timezone.utc).isoformat()
+                    candidate["message"] = None if updated is not state else "En attente d'une nouvelle bougie clôturée récente."
+                    if current.get("error"):
+                        candidate["error"] = None
+                        self._event(candidate, "recovery", "Traitement du paper rétabli.")
+                    if updated is not state or current.get("error"):
+                        candidate["state"] = updated
+                        self._commit(key, candidate)
                     else:
-                        current["message"] = "En attente d'une nouvelle bougie clôturée récente."
+                        self.portfolios[key] = candidate  # Heartbeat seul : pas d'écriture inutile.
+            except PaperPersistenceError:
+                pass  # _commit a déjà bloqué l'exécution et conservé les causes.
             except Exception as error:
                 with self.lock:
-                    self.portfolios[key]["error"] = str(error)
+                    current = self.portfolios[key]
+                    if current.get("error") == str(error):
+                        continue  # Même incident toujours actif, déjà sauvegardé.
+                    candidate = deepcopy(current)
+                    candidate["error"] = str(error)
+                    self._event(candidate, "error", str(error))
+                    try:
+                        self._commit(key, candidate)
+                    except PaperPersistenceError:
+                        pass
 
     def loop(self):
         while not self.stop_event.is_set():

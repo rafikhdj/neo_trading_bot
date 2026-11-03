@@ -4,8 +4,10 @@ from copy import deepcopy
 from decimal import Decimal, ROUND_DOWN
 import json
 import logging
+import os
 from pathlib import Path
 import time
+from tempfile import NamedTemporaryFile
 
 import pandas as pd
 
@@ -34,10 +36,24 @@ def new_state(config):
 
 
 def save_state(path, state):
+    """Écrit un fichier complet, synchronisé, puis le remplace atomiquement."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(state, indent=2))
-    temporary.replace(path)
+    temporary = None
+    try:
+        payload = json.dumps(state, indent=2, allow_nan=False)
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                prefix=path.name + ".", suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                LOG.warning("Fichier temporaire paper non supprimé ; l'erreur initiale est conservée.")
 
 
 def process_candle(state, data, ticker, now=None, strategy_fn=None):
