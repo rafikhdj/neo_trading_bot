@@ -4,3 +4,7 @@
 a.secondary{display:inline-block;text-decoration:none;border-radius:6px;font-weight:600}a:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
 
 .trades{max-height:560px;overflow:auto;margin-top:16px}.trades thead{position:sticky;top:0;background:var(--panel)}
+
+nav a{display:inline-block;padding:14px 0;margin-left:26px;color:var(--muted);text-decoration:none}nav a:hover{color:var(--text)}.actions{display:flex;gap:8px;align-items:center}.notice+.notice{margin-top:14px}
+
+@media(max-width:750px){.section-title{flex-wrap:wrap}.section-title .actions{width:100%;flex-wrap:wrap}}

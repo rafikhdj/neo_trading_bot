@@ -11,7 +11,7 @@ def order_rejection(quantity, price, rules):
     return None
 
 
-def backtest(strategy, data, capital=50, fee_rate=0.0, slippage_rate=0.0, position_size=0.10, market_rules=None):
+def backtest(strategy, data, capital=50, fee_rate=0.0, slippage_rate=0.0, position_size=0.10, market_rules=None, start_index=0):
     """Exécute les signaux à l'ouverture suivante, avec frais et slippage.
 
     Les taux sont des fractions : 0.001 = 0,1 %. Une position utilise
@@ -20,6 +20,8 @@ def backtest(strategy, data, capital=50, fee_rate=0.0, slippage_rate=0.0, positi
     """
     if data.empty:
         raise ValueError("Aucune bougie pour le backtest.")
+    if not 0 <= start_index < len(data):
+        raise ValueError("Début de simulation hors des données disponibles.")
     if capital <= 0 or not 0 < position_size <= 1:
         raise ValueError("Capital positif et taille de position entre 0 et 1 attendus.")
     if not 0 <= fee_rate < 1 or not 0 <= slippage_rate < 1:
@@ -32,11 +34,11 @@ def backtest(strategy, data, capital=50, fee_rate=0.0, slippage_rate=0.0, positi
     nb_buy = 0
     nb_sell = 0
     equity_curve = [{
-        "timestamp": data.iloc[0].get("timestamp", 0),
+        "timestamp": data.iloc[start_index].get("timestamp", start_index),
         "equity": capital,
     }]
 
-    for i in range(len(data) - 1):
+    for i in range(start_index, len(data) - 1):
         signal = strategy(data.iloc[:i + 1])
         signals.append(signal)
         candle = data.iloc[i + 1]

@@ -1,0 +1,7 @@
+{
+  "min_closed_trades": 30,
+  "min_validation_trades": 10,
+  "max_drawdown": 0.10,
+  "min_return": 0.0,
+  "validation_fraction": 0.30
+}

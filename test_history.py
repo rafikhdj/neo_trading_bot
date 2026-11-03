@@ -56,7 +56,8 @@ def test_repair_fills_gap_and_preserves_existing_data(tmp_path, monkeypatch):
     candles = history.candles_from_trades([trade(0, 100, 1, 1), trade(10, 120, 1, 2)], START, END, 5)
     candles["vwap"] = candles["vwap"].astype(str)  # Ancien format Kraken.
     missing = history.candles_from_trades([trade(5, 110, 1, 3)], START, END, 5)
-    monkeypatch.setattr(history, "DATA_DIR", tmp_path)
+    monkeypatch.setattr("data.kraken.DATA_DIR", tmp_path)
+    candles.to_parquet(tmp_path / "XBTEUR_5m.parquet", index=False)
     monkeypatch.setattr(history, "load_ohlcv", lambda *a: prepare_ohlcv(candles))
     calls = []
     def fetch(symbol, interval, start, end):
@@ -75,7 +76,7 @@ def test_failed_download_preserves_file(tmp_path, monkeypatch):
     path = tmp_path / "XBTEUR_5m.parquet"
     candles.to_parquet(path, index=False)
     original = path.read_bytes()
-    monkeypatch.setattr(history, "DATA_DIR", tmp_path)
+    monkeypatch.setattr("data.kraken.DATA_DIR", tmp_path)
     monkeypatch.setattr(history, "load_ohlcv", lambda *a: candles)
     def interrupted(*args):
         raise RuntimeError("Connexion interrompue")

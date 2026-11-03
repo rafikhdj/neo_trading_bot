@@ -9,7 +9,9 @@ from threading import Lock, Thread
 from urllib.parse import urlsplit
 
 
-from backtest.report import DEFAULT_CONFIG, run_strategy
+from backtest.report import DEFAULT_CONFIG, run_strategy, validate_strategy
+from backtest.validation import load_policy, eligibility_for
+from paper_trading.manager import PaperManager
 from data.kraken import get_ohlcv, load_ohlcv, get_pair_rules
 from data.history import repair_history
 from strategies import get_strategies
@@ -27,8 +29,9 @@ def json_default(value):
 
 
 class BacktestApp:
-    def __init__(self, results_path=RESULTS):
+    def __init__(self, results_path=RESULTS, paper_dir=None):
         self.results_path = results_path
+        self.paper = PaperManager(paper_dir or results_path.parent / "paper_trading" / "states")
         self.lock = Lock()
         self.running = False
         self.state = {"config": DEFAULT_CONFIG.copy(), "dataset": None,
@@ -47,7 +50,19 @@ class BacktestApp:
                 state["strategies"].setdefault(key, {
                     "name": spec["name"], "description": spec["description"], "status": "idle",
                 })
-            return {**state, "running": self.running}
+            policy = load_policy()
+            specs = get_strategies()
+            for key, row in state["strategies"].items():
+                row["eligibility"] = eligibility_for(row, specs.get(key), policy)
+            return {**state, "running": self.running, "policy": policy}
+
+    def start_paper(self, key):
+        snapshot = self.snapshot()
+        row = snapshot["strategies"].get(key)
+        if snapshot["running"] or not row or row["eligibility"]["status"] != "eligible":
+            raise ValueError("Stratégie non éligible : consulter les critères dans More.")
+        config = deepcopy(snapshot["config"])
+        self.paper.start(key, get_strategies()[key], config, row["eligibility"])
 
     def start(self, options):
         config = DEFAULT_CONFIG.copy()
@@ -95,13 +110,15 @@ class BacktestApp:
                     "candles": len(data), "gaps": int((gaps > seconds).sum()),
                     "missing_candles": int(((gaps // seconds - 1).clip(lower=0)).sum()),
                 }
+            policy = load_policy()
             for key, spec in specs.items():
                 with self.lock:
                     self.state["strategies"][key]["status"] = "running"
                 try:
                     result = run_strategy(spec, data, config)
+                    validation = validate_strategy(spec, data, config, result, policy)
                     with self.lock:
-                        self.state["strategies"][key].update(status="done", result=result)
+                        self.state["strategies"][key].update(status="done", result=result, validation=validation)
                 except Exception as error:
                     with self.lock:
                         self.state["strategies"][key].update(status="error", error=str(error))
@@ -132,9 +149,14 @@ def handler_for(app):
             if path == "/api/results":
                 self.send(200, app.snapshot())
                 return
+            if path == "/api/paper":
+                self.send(200, app.paper.snapshot())
+                return
             files = {
                 "/": ("index.html", "text/html; charset=utf-8"),
                 "/index.html": ("index.html", "text/html; charset=utf-8"),
+                "/paper": ("paper.html", "text/html; charset=utf-8"),
+                "/paper.js": ("paper.js", "text/javascript; charset=utf-8"),
                 "/strategy": ("strategy.html", "text/html; charset=utf-8"),
                 "/style.css": ("style.css", "text/css; charset=utf-8"),
                 "/common.js": ("common.js", "text/javascript; charset=utf-8"),
@@ -153,7 +175,7 @@ def handler_for(app):
             if origin and origin != f"http://{self.headers.get('Host')}":
                 self.send(403, {"error": "Origine refusée"})
                 return
-            if self.path != "/api/run":
+            if self.path not in {"/api/run", "/api/paper/start", "/api/paper/pause"}:
                 self.send(404, {"error": "Route introuvable"})
                 return
             try:
@@ -163,6 +185,14 @@ def handler_for(app):
                 options = json.loads(self.rfile.read(size))
                 if not isinstance(options, dict):
                     raise ValueError("Configuration invalide")
+                if self.path == "/api/paper/start":
+                    app.start_paper(options.get("strategy"))
+                    self.send(200, {"started": True})
+                    return
+                if self.path == "/api/paper/pause":
+                    app.paper.pause(options.get("strategy"))
+                    self.send(200, {"paused": True})
+                    return
                 started = app.start(options)
                 self.send(202 if started else 409, {"started": started})
             except (ValueError, TypeError) as error:
@@ -177,13 +207,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(BacktestApp()))
+    app = BacktestApp()
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(app))
+    app.paper.start_worker()
     print(f"Dashboard : http://127.0.0.1:{args.port} — arrêt avec Ctrl+C", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        app.paper.close()
         server.server_close()
 
 

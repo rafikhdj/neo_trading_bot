@@ -1,9 +1,12 @@
 
 from pathlib import Path
+from threading import Lock
 
 import pandas as pd
 import requests
 
+
+_DATA_LOCK = Lock()
 
 BASE_URL = "https://api.kraken.com/0/public/OHLC"
 DATA_DIR = Path(__file__).resolve().parent.parent / "market_data" / "kraken"
@@ -55,25 +58,8 @@ def get_ohlcv(symbol="XBTEUR", interval=5, format="pandas"):
     # Retirer la bougie en cours
     df = df.iloc[:-1].copy()
 
-    # 3. Sauvegarde locale
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    path = DATA_DIR / f"{symbol}_{interval}m.parquet"
-
-    # Fusionner avec les anciennes données
-    if path.exists():
-        old = pd.read_parquet(path)
-        df = pd.concat([old, df])
-
-    df = (
-        df.drop_duplicates(subset="timestamp", keep="last")
-          .sort_values("timestamp")
-          .reset_index(drop=True)
-    )
-
-    df = prepare_ohlcv(df)
-    temporary = path.with_suffix(".tmp.parquet")
-    df.to_parquet(temporary, index=False)
-    temporary.replace(path)
+    # Fusion et écriture partagées entre backtest et paper.
+    df = store_ohlcv(df, symbol, interval)
 
     # 4. Retour
     if format == "json":
@@ -148,3 +134,17 @@ def get_pair_rules(symbol="XBTEUR", refresh=False):
     temporary.write_text(json.dumps(rules, indent=2))
     temporary.replace(path)
     return rules
+
+
+def store_ohlcv(data, symbol="XBTEUR", interval=5):
+    """Fusion atomique pour les écritures du backtest et de la boucle paper."""
+    with _DATA_LOCK:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        path = DATA_DIR / f"{symbol}_{interval}m.parquet"
+        if path.exists():
+            data = pd.concat([pd.read_parquet(path), data], ignore_index=True)
+        data = prepare_ohlcv(data)
+        temporary = path.with_suffix(".tmp.parquet")
+        data.to_parquet(temporary, index=False)
+        temporary.replace(path)
+        return data

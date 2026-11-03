@@ -6,7 +6,7 @@ import time
 import pandas as pd
 import requests
 
-from data.kraken import DATA_DIR, get_ohlcv, load_ohlcv, prepare_ohlcv
+from data.kraken import get_ohlcv, load_ohlcv, store_ohlcv
 
 LOG = logging.getLogger(__name__)
 
@@ -75,11 +75,7 @@ def repair_history(symbol="XBTEUR", interval=5, refresh=False):
         if candles.empty:
             LOG.warning("Aucune transaction trouvée : trou conservé.")
             continue
-        data = prepare_ohlcv(pd.concat([data, candles], ignore_index=True))
-        path = DATA_DIR / f"{symbol}_{interval}m.parquet"
-        temporary = path.with_suffix(".tmp.parquet")
-        data.to_parquet(temporary, index=False)
-        temporary.replace(path)
+        data = store_ohlcv(candles, symbol, interval)
         LOG.info("%s bougies importées", len(candles))
     remaining = int((data.timestamp.diff() > step).sum())
     LOG.info("Terminé : %s bougies, %s trou(s) restant(s)", len(data), remaining)

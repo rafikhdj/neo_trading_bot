@@ -1,8 +1,8 @@
 # Neo · Bot Kraken
 
 Un fichier par stratégie, un moteur de backtest commun et un dashboard local.
-Cette étape concerne uniquement les backtests ; le paper et le live ne sont pas
-intégrés au dashboard.
+Le dashboard suit les backtests et le paper multi-stratégies. Le live reste
+hors périmètre : aucun ordre réel n’est envoyé.
 
 ## Installation
 
@@ -153,11 +153,77 @@ sont des hypothèses, pas des tarifs Kraken. Spread variable et liquidité ne so
 - `backtest/` : exécution historique et métriques communes.
 - `dashboard/` : serveur Python local et interface HTML sans dépendance JavaScript.
 - `market_data/` : historique Parquet.
-- `paper_trading/` : première boucle de simulation, conservée pour une étape ultérieure.
+- `paper_trading/` : simulation multi-stratégies et sauvegardes séparées.
 
-Le parcours prévu est backtest, puis paper, puis live. Pour le moment, aucun
-lancement paper/live ni promotion automatique n'est proposé dans le dashboard.
-Le fichier `paper_state.json` existant n'est pas modifié.
+Le parcours est backtest, validation, puis paper. Le live n'est pas développé.
+Le fichier historique `paper_state.json` est conservé sans migration ; les
+nouveaux portefeuilles utilisent `paper_trading/states/`.
+
+## Validation et passage en paper
+
+Les seuils sont dans `validation_config.json` :
+
+- Rendement net strictement supérieur à 0, sur le total et sur la validation.
+- Drawdown maximum de 10 %, sur les deux périodes.
+- Au moins 30 aller-retours clôturés au total et 10 en validation.
+- Validation sur les 30 % les plus récents des bougies disponibles.
+
+Le portefeuille de validation repart du capital initial sans position. Les
+bougies antérieures restent accessibles pour amorcer les indicateurs mais aucun
+ordre n'y est exécuté. Les paramètres ne sont pas optimisés. Cette découpe
+chronologique ne garantit pas une indépendance statistique si les mêmes données
+ont déjà servi à choisir la stratégie ; il faudra aussi tester d'autres périodes.
+
+Chaque fiche « More » explique les critères atteints ou manquants. Les statuts
+sont « À évaluer », « Données insuffisantes », « Refusée » et « Éligible au paper ».
+Un nombre insuffisant de trades prime sur les autres échecs ; tous les critères
+restent affichés. Un changement des seuils réévalue les résumés déjà calculés.
+Un changement de la fraction de validation ou du code de la stratégie impose un
+nouveau backtest. Ces seuils sont un filtre de recherche, pas une garantie de gain.
+
+Dans la liste Backtests, **Démarrer paper** est actif uniquement pour une stratégie
+éligible. Le serveur vérifie lui-même les critères : le bouton ne peut pas
+contourner le filtre. Aucun lancement automatique ni dérogation n'est prévu.
+
+## Paper multi-stratégies
+
+L'onglet **Paper** présente les portefeuilles démarrés : cash, BTC, P&L,
+rendement, drawdown et trades. « More » ouvre une fiche dans un nouvel onglet.
+Chaque stratégie a son propre capital fictif et son propre fichier JSON dans
+`paper_trading/states/`, exclu de Git. La validation et le code approuvés sont
+conservés avec le portefeuille.
+
+Une seule boucle vérifie Kraken toutes les 15 secondes et partage les appels
+OHLC/ticker entre les stratégies d'une même paire/intervalle. Chaque nouvelle
+bougie clôturée est traitée une seule fois. La stratégie choisie est utilisée,
+avec le budget, les frais, le slippage et les règles de quantité du backtest.
+L'achat utilise l'ask courant, la vente le bid courant. Les données trop anciennes
+ne déclenchent pas de simulation. Les positions et l'equity sont mises à jour à
+chaque nouvelle bougie traitée, pas à chaque variation du ticker.
+
+**Pause** n'effectue aucune vente. Les prix évoluent pendant la pause mais la
+valorisation affichée reste celle du dernier traitement ; elle reprend à la
+prochaine bougie traitée après reprise. Les signaux manqués ne sont pas rejoués.
+Après redémarrage du serveur, les portefeuilles sont en pause ; utiliser
+**Reprendre**. La reprise vérifie à nouveau l'éligibilité et impose le même code
+et les mêmes paramètres de portefeuille (un simple changement de date de capture
+des règles n'est pas bloquant). Si le code change pendant le paper, il est mis
+en pause. Pour l'instant, ne pas modifier une stratégie ayant un portefeuille
+ouvert ; créer un nouveau fichier de stratégie pour une nouvelle version.
+
+Le serveur doit rester actif pour que la simulation tourne. Lancer une seule
+instance du dashboard pour un même projet. L'ancien `paper_state.json` n'est
+ni repris automatiquement ni supprimé.
+
+Alternative en ligne de commande, avec le même filtre et les mêmes sauvegardes :
+
+```sh
+.venv/bin/python -m paper_trading --strategy trend_breakout --once
+```
+
+Cette commande refuse de démarrer si la stratégie n'est pas éligible. Sans
+`--once`, elle tourne jusqu'à Ctrl+C. Ne pas la lancer en parallèle du dashboard
+sur les mêmes portefeuilles.
 
 ## Tests
 

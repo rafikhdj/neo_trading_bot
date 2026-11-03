@@ -14,6 +14,7 @@ function detail(){
  if(r.rejected_orders?.length){
   panel.insertAdjacentHTML('beforeend', `<h2 style="margin-top:24px">Tentatives refusées (${r.rejected_orders.length})</h2><p class="sub">Une tentative par bougie portant un signal inexécutable ; aucun ordre réel n’est envoyé.</p><div class="table-wrap trades"><table><thead><tr><th>Date</th><th>Ordre</th><th>Quantité BTC</th><th>Motif</th></tr></thead><tbody>${r.rejected_orders.map(t=>`<tr><td>${esc(date(t.timestamp))}</td><td>${esc(t.side)}</td><td>${t.quantity.toFixed(8)}</td><td>${esc(t.reason)}</td></tr>`).join('')}</tbody></table></div>`);
  }
+ panel.insertAdjacentHTML("beforeend",eligibilityDetails(row));
  document.title = `Neo — ${row.name}`;
 }
 

@@ -15,3 +15,5 @@ backtest_results.json
 .aws/
 .DS_Store
 *.tmp.parquet
+
+paper_trading/states/

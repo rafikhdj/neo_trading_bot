@@ -58,3 +58,23 @@ def test_missing_history_is_visible_error(tmp_path, monkeypatch):
     app.run(get_strategies(), DEFAULT_CONFIG.copy(), False)
     assert app.snapshot()["strategies"]["rsi"]["status"] == "error"
     assert not app.running
+
+
+def test_paper_api_gate_uses_validation_and_current_code(tmp_path):
+    from backtest.validation import load_policy
+    app = BacktestApp(tmp_path / "results.json", paper_dir=tmp_path / "paper")
+    spec = get_strategies()["moving_average"]
+    policy = load_policy()
+    app.state["strategies"] = {"moving_average": {
+        "name": spec["name"], "status": "done",
+        "result": {"summary": {"return": .02, "max_drawdown": .05, "closed_trades": 40}},
+        "validation": {"source_hash": spec["source_hash"], "policy": policy,
+                       "summary": {"return": .01, "max_drawdown": .03, "closed_trades": 15}},
+    }}
+    app.start_paper("moving_average")
+    assert app.paper.snapshot()["moving_average"]["status"] == "running"
+    app.paper.pause("moving_average")
+    app.state["strategies"]["moving_average"]["validation"]["source_hash"] = "old code"
+    with pytest.raises(ValueError, match="non éligible"):
+        app.start_paper("moving_average")
+    assert app.paper.snapshot()["moving_average"]["status"] == "paused"
