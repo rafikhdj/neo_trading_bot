@@ -13,7 +13,7 @@ def run_strategy(spec, data, config):
         raise ValueError(f"Au moins {spec['warmup'] + 1} bougies nécessaires.")
     result = backtest(spec["function"], data, capital=config["capital"],
                       fee_rate=config["fee_rate"], slippage_rate=config["slippage_rate"],
-                      position_size=config["position_size"])
+                      position_size=config["position_size"], market_rules=config.get("market_rules"))
     curve = [point["equity"] for point in result["equity_curve"]]
     pnl = calculate_pnl(result["trades"], float(data.iloc[-1]["close"]))
     result["summary"] = {
@@ -24,6 +24,7 @@ def run_strategy(spec, data, config):
         "win_rate": calculate_win_rate(result["trades"]),
         "closed_trades": result["nb_sell"], "open_position": result["nb_buy"] > result["nb_sell"],
         "fees": result["total_fees"], **pnl,
+        "rejected_orders": len(result["rejected_orders"]),
         "buy_hold_return": float(data.iloc[-1]["close"] / data.iloc[0]["close"] - 1),
     }
     return result

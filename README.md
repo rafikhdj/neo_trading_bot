@@ -30,7 +30,7 @@ Le bouton « Lancer les backtests » teste toutes les stratégies :
 - Portefeuille fictif indépendant par stratégie.
 - Capital, taille de position, frais et slippage configurables.
 - Statuts en attente, en cours, terminé ou erreur.
-- P&L net, rendement du portefeuille, drawdown maximum, win rate et trades clôturés.
+- P&L net, rendement du portefeuille, drawdown maximum, win rate, trades clôturés et tentatives refusées.
 - Lien « More » : nouvel onglet dédié avec courbe du portefeuille, P&L réalisé et latent, frais et transactions.
 
 Les données sont lues dans `market_data/kraken/XBTEUR_5m.parquet` par défaut.
@@ -89,15 +89,30 @@ ne doit pas lancer de calcul ni faire d'appel réseau.
 Signal sur la clôture de la bougie i, exécution à l'ouverture de i+1.
 Achat à l'open augmenté du slippage, vente à l'open diminué du slippage.
 La taille de position est une fraction du cash disponible, frais d'achat inclus.
-Pas de levier ni de vente à découvert. La position finale est valorisée au dernier
+Pas de levier ni de vente à découvert.
+Les règles actuelles de la paire sont sauvegardées dans
+`market_data/kraken/XBTEUR_rules.json` : quantité minimum, montant minimum hors
+frais et nombre de décimales autorisées. Elles sont chargées une seule fois par
+série de backtests. Les quantités sont arrondies vers le bas ; le reliquat reste
+en cash. Un achat refusé ne modifie pas le portefeuille ; une vente refusée
+conserve la position. Les tentatives et leurs motifs sont visibles dans la fiche
+stratégie. Un signal persistant peut produire plusieurs tentatives sur des
+bougies successives.
+
+L'actualisation Kraken du dashboard ou `python -m backtest --refresh` actualise
+également ce snapshot. Sans actualisation, le backtest reste utilisable hors
+ligne. Ces règles actuelles sont appliquées à toute la période historique : les
+changements de minimums passés ne sont pas reconstitués. Les prix simulés sont
+des prix d'exécution au marché, pas des prix limites soumis au tick de cotation.
+Documentation : [Kraken AssetPairs](https://docs.kraken.com/api-reference/market-data/get-tradable-asset-pairs).
+ La position finale est valorisée au dernier
 close, sans liquidation fictive ni frais de vente anticipés.
 
 Le win rate porte uniquement sur les aller-retours clôturés après frais ; le
 rendement et le drawdown portent sur tout le portefeuille, cash inclus. Le
 benchmark buy & hold est brut et utilise tout le capital : son exposition est
 donc différente de celle des stratégies. Les frais et le slippage par défaut
-sont des hypothèses, pas des tarifs Kraken. Minimums d'ordre, spread variable et
-liquidité ne sont pas simulés. Les stratégies fournies sont des exemples à tester.
+sont des hypothèses, pas des tarifs Kraken. Spread variable et liquidité ne sont pas simulés. Les stratégies fournies sont des exemples à tester.
 
 ## Ligne de commande
 

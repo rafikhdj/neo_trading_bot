@@ -1,0 +1,7 @@
+{
+  "symbol": "XBTEUR",
+  "ordermin": "0.00006",
+  "costmin": "0.45",
+  "lot_decimals": 8,
+  "fetched_at": "2026-11-03T13:26:33.219772+00:00"
+}

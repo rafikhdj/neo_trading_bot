@@ -8,6 +8,14 @@ from dashboard.__main__ import BacktestApp
 from strategies import get_strategies
 
 
+@pytest.fixture(autouse=True)
+def local_pair_rules(monkeypatch):
+    monkeypatch.setattr("dashboard.__main__.get_pair_rules", lambda *args, **kwargs: {
+        "ordermin": "0.00006", "costmin": "0.45", "lot_decimals": 8,
+        "fetched_at": "2026-11-03T00:00:00+00:00",
+    })
+
+
 def make_history():
     close = list(range(100, 140)) + list(range(140, 100, -1)) * 2
     return pd.DataFrame({"timestamp": pd.date_range("2026-01-01", periods=len(close), freq="5min", tz="UTC"),

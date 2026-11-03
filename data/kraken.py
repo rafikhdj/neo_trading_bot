@@ -123,3 +123,28 @@ def prepare_ohlcv(data):
     if (data[["open", "high", "low", "close"]] <= 0).any().any():
         raise ValueError("Les prix doivent être positifs.")
     return data.drop_duplicates("timestamp", keep="last").sort_values("timestamp").reset_index(drop=True)
+
+
+def get_pair_rules(symbol="XBTEUR", refresh=False):
+    """Snapshot des règles actuelles, réutilisé hors ligne pour les backtests."""
+    import json
+    from datetime import datetime, timezone
+
+    path = DATA_DIR / f"{symbol}_rules.json"
+    if path.exists() and not refresh:
+        return json.loads(path.read_text())
+    response = requests.get("https://api.kraken.com/0/public/AssetPairs",
+                            params={"pair": symbol}, timeout=15)
+    response.raise_for_status()
+    payload = response.json()
+    if payload["error"]:
+        raise RuntimeError(payload["error"])
+    pair = next(iter(payload["result"].values()))
+    rules = {"symbol": symbol, "ordermin": pair["ordermin"],
+             "costmin": pair["costmin"], "lot_decimals": pair["lot_decimals"],
+             "fetched_at": datetime.now(timezone.utc).isoformat()}
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(rules, indent=2))
+    temporary.replace(path)
+    return rules

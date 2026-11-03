@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 
 from backtest.report import DEFAULT_CONFIG, run_strategy
-from data.kraken import get_ohlcv, load_ohlcv
+from data.kraken import get_ohlcv, load_ohlcv, get_pair_rules
 from data.history import repair_history
 from strategies import get_strategies
 
@@ -86,6 +86,7 @@ class BacktestApp:
             else:
                 loader = get_ohlcv if refresh else load_ohlcv
                 data = loader(config["symbol"], config["interval"])
+            config["market_rules"] = get_pair_rules(config["symbol"], refresh=refresh)
             seconds = config["interval"] * 60
             gaps = data["timestamp"].diff().dt.total_seconds().dropna()
             with self.lock:

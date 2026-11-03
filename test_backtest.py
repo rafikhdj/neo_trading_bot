@@ -155,3 +155,45 @@ def test_signal_uses_history_and_executes_next_open():
     assert result["trades"][0]["price"] == 120
     assert result["trades"][1]["price"] == 90
     assert result["capital_final"] == pytest.approx(48.75)
+
+
+def test_below_minimum_quantity_does_not_change_portfolio():
+    result = backtest(winning_strategy, make_data([100, 100, 110]),
+                      market_rules={"ordermin": "0.06", "costmin": "0.45", "lot_decimals": 8})
+    assert result["trades"] == []
+    assert result["capital_final"] == 50
+    assert result["nb_buy"] == result["nb_sell"] == 0
+    assert len(result["rejected_orders"]) == 1
+    assert "Quantité" in result["rejected_orders"][0]["reason"]
+    assert len(result["equity_curve"]) == 3
+
+
+def test_quantity_rounds_down_and_cash_remainder_is_kept():
+    import pytest
+    result = backtest(hold_strategy, make_data([3, 3]),
+                      market_rules={"ordermin": "0.01", "costmin": "0.45", "lot_decimals": 2})
+    trade = result["trades"][0]
+    assert trade["quantity"] == 1.66
+    assert trade["capital"] == pytest.approx(45.02)
+    assert result["capital_final"] == 50
+    assert result["rejected_orders"] == []
+
+
+def test_minimum_cost_equality_and_rejection():
+    rules = {"ordermin": "0.01", "costmin": "5", "lot_decimals": 8}
+    accepted = backtest(hold_strategy, make_data([100, 100]), market_rules=rules)
+    assert accepted["nb_buy"] == 1
+    rejected = backtest(hold_strategy, make_data([100, 100]),
+                        market_rules={**rules, "costmin": "5.01"})
+    assert rejected["nb_buy"] == 0
+    assert "Montant" in rejected["rejected_orders"][0]["reason"]
+
+
+def test_rejected_sell_keeps_position_and_valuation():
+    result = backtest(winning_strategy, make_data([100, 100, 80]),
+                      market_rules={"ordermin": "0.01", "costmin": "4.5", "lot_decimals": 8})
+    assert result["nb_buy"] == 1
+    assert result["nb_sell"] == 0
+    assert result["rejected_orders"][0]["side"] == "SELL"
+    assert result["capital_final"] == 49
+    assert result["equity_curve"][-1]["equity"] == 49
