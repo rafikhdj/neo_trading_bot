@@ -66,6 +66,26 @@ Une seule instance du dashboard doit utiliser ce fichier.
 - `strategies/momentum.py` : variation sur 12 bougies.
 - `strategies/rsi.py` : RSI simple sur 14 variations, seuils 30/70.
 - `strategies/trend_breakout.py` : breakout horaire avec filtre de tendance.
+- `strategies/trend_pullback.py` : reprise au-dessus d'une moyenne 20 h après repli,
+  avec moyenne 50 h montante et sortie sous la tendance ou les plus bas de 6 h.
+- `strategies/volume_breakout.py` : cassure du canal de 20 bougies 30 min, confirmée
+  par un volume supérieur à 1,5 fois la moyenne et un prix au-dessus de la moyenne 50.
+- `strategies/bollinger_range.py` : réintégration de la bande basse 20/2 en 15 min,
+  avec filtre de stabilité de la tendance et distance d'au moins 1 % à la moyenne.
+
+Ces candidats ont des règles fixes, sans recherche des meilleurs paramètres sur
+le fichier local. Tous utilisent uniquement des périodes entièrement clôturées
+et exécutent les ordres à l'ouverture 5 min suivante dans le backtest. Les trous
+internes interdisent les entrées et demandent une sortie. Les règles sont
+contenues dans chaque fichier pour garder les versions indépendantes.
+Les sorties sont des signaux de clôture : pas de stop exécuté en cours de bougie.
+Le filtre de distance Bollinger n'est pas une garantie de gain ni une estimation
+des frais si l'on modifie les hypothèses de simulation.
+
+Références sur les indicateurs :
+[Bollinger — Fidelity](https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/bollinger-bands),
+[Volume — Schwab](https://workplace.schwab.com/story/trading-volume-as-market-indicator).
+
 
 ### Breakout horaire avec filtre de tendance
 
@@ -214,6 +234,17 @@ et les mêmes paramètres de portefeuille (un simple changement de date de captu
 des règles n'est pas bloquant). Si le code change pendant le paper, il est mis
 en pause. Pour l'instant, ne pas modifier une stratégie ayant un portefeuille
 ouvert ; créer un nouveau fichier de stratégie pour une nouvelle version.
+
+### Ajouter une stratégie pendant le paper
+
+- Actualiser la page ou relancer des backtests ne coupe pas la boucle paper.
+- Ajouter un **nouveau fichier** dans `strategies/` ne modifie pas les stratégies
+  déjà actives. Le dashboard le découvre automatiquement ; lancer les backtests
+  pour l'évaluer avant le paper. Aucune nouvelle stratégie n'est lancée d'office.
+- Modifier le fichier d'une stratégie **déjà active** met cette stratégie en pause
+  au prochain contrôle. Utiliser un nouveau nom de fichier pour une variante.
+- Redémarrer le **serveur Python** remet les portefeuilles en pause ; leurs soldes
+  et transactions sont conservés. Utiliser « Reprendre » après le redémarrage.
 
 Le serveur doit rester actif pour que la simulation tourne. Lancer une seule
 instance du dashboard pour un même projet. L'ancien `paper_state.json` n'est

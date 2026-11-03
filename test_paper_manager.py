@@ -99,3 +99,18 @@ def test_failed_save_does_not_apply_trade_in_memory(tmp_path, monkeypatch):
         assert p["state"]["cash"] == 50
         assert p["state"]["trades"] == []
         assert "Disque indisponible" in p["error"]
+
+
+def test_discovering_another_strategy_keeps_existing_paper_running(tmp_path, monkeypatch):
+    manager, specs, market, calls = setup_manager(tmp_path, monkeypatch)
+    manager.tick(now=NOW)
+    before = manager.snapshot()
+    specs["new_strategy"] = {"name": "Nouvelle", "source_hash": "new", "function": lambda data: 1}
+    manager.tick(now=NOW)
+    after = manager.snapshot()
+    assert set(after) == {"first", "second"}  # Aucune promotion automatique.
+    for key in before:
+        assert after[key]["status"] == "running"
+        assert after[key]["started_at"] == before[key]["started_at"]
+        assert after[key]["source_hash"] == before[key]["source_hash"]
+        assert after[key]["state"] == before[key]["state"]
