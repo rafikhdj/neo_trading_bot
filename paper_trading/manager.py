@@ -36,7 +36,8 @@ class PaperManager:
             self.thread.join(timeout=2)
 
     def start(self, key, spec, config, approval):
-        if approval["status"] != "eligible" or approval["source_hash"] != spec["source_hash"]:
+        if ((approval["status"] != "eligible" and approval.get("manual") is not True)
+                or approval["source_hash"] != spec["source_hash"]):
             raise ValueError("Cette stratégie n'est pas validée pour le paper.")
         with self.lock:
             existing = self.portfolios.get(key)
@@ -51,6 +52,8 @@ class PaperManager:
                     raise ValueError("Configuration différente du portefeuille existant ; conserver les mêmes paramètres.")
                 portfolio = deepcopy(existing)
                 portfolio.update(status="running", error=None)
+                if approval.get("manual"):
+                    portfolio["approval"] = deepcopy(approval)
             else:
                 state = new_state(deepcopy(config))
                 portfolio = {

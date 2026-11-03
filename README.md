@@ -182,8 +182,12 @@ Un changement de la fraction de validation ou du code de la stratégie impose un
 nouveau backtest. Ces seuils sont un filtre de recherche, pas une garantie de gain.
 
 Dans la liste Backtests, **Démarrer paper** est actif uniquement pour une stratégie
-éligible. Le serveur vérifie lui-même les critères : le bouton ne peut pas
-contourner le filtre. Aucun lancement automatique ni dérogation n'est prévu.
+éligible. Le serveur vérifie lui-même les critères pour le lancement normal. Le bouton **Lancer manuellement** permet de démarrer une stratégie même si ses
+performances sont insuffisantes ou si elle manque de trades. Cette décision est
+explicite, conservée dans sa sauvegarde et identifiée « Lancement manuel » dans
+l'onglet Paper. Sa reprise conserve le mode manuel. Les seuils et le statut
+normal ne sont pas modifiés. Un backtest terminé sur le code actuel reste requis ;
+les erreurs de code et les règles Kraken ne sont pas contournées.
 
 ## Paper multi-stratégies
 
@@ -205,7 +209,7 @@ chaque nouvelle bougie traitée, pas à chaque variation du ticker.
 valorisation affichée reste celle du dernier traitement ; elle reprend à la
 prochaine bougie traitée après reprise. Les signaux manqués ne sont pas rejoués.
 Après redémarrage du serveur, les portefeuilles sont en pause ; utiliser
-**Reprendre**. La reprise vérifie à nouveau l'éligibilité et impose le même code
+**Reprendre**. La reprise vérifie à nouveau l'éligibilité (sauf en mode manuel) et impose le même code
 et les mêmes paramètres de portefeuille (un simple changement de date de capture
 des règles n'est pas bloquant). Si le code change pendant le paper, il est mis
 en pause. Pour l'instant, ne pas modifier une stratégie ayant un portefeuille
@@ -221,7 +225,7 @@ Alternative en ligne de commande, avec le même filtre et les mêmes sauvegardes
 .venv/bin/python -m paper_trading --strategy trend_breakout --once
 ```
 
-Cette commande refuse de démarrer si la stratégie n'est pas éligible. Sans
+Cette commande refuse de démarrer si la stratégie n'est pas éligible ; le lancement manuel se fait depuis le dashboard. Sans
 `--once`, elle tourne jusqu'à Ctrl+C. Ne pas la lancer en parallèle du dashboard
 sur les mêmes portefeuilles.
 

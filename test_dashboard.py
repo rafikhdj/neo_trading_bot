@@ -74,7 +74,25 @@ def test_paper_api_gate_uses_validation_and_current_code(tmp_path):
     app.start_paper("moving_average")
     assert app.paper.snapshot()["moving_average"]["status"] == "running"
     app.paper.pause("moving_average")
-    app.state["strategies"]["moving_average"]["validation"]["source_hash"] = "old code"
+    app.state["strategies"]["moving_average"]["result"]["summary"]["return"] = -.02
     with pytest.raises(ValueError, match="non éligible"):
         app.start_paper("moving_average")
+    app.start_paper("moving_average", manual=True)
+    assert app.paper.snapshot()["moving_average"]["approval"]["manual"] is True
+    app.paper.pause("moving_average")
+    from paper_trading.manager import PaperManager
+    app.paper = PaperManager(tmp_path / "paper")
+    app.start_paper("moving_average", manual=True)
+    assert app.paper.snapshot()["moving_average"]["state"]["cash"] == 50
+    app.paper.pause("moving_average")
+    app.state["strategies"]["moving_average"]["validation"]["source_hash"] = "old code"
+    with pytest.raises(ValueError, match="code actuel"):
+        app.start_paper("moving_average")
     assert app.paper.snapshot()["moving_average"]["status"] == "paused"
+
+
+def test_manual_launch_still_requires_current_backtest(tmp_path):
+    app = BacktestApp(tmp_path / "results.json", paper_dir=tmp_path / "paper")
+    with pytest.raises(ValueError, match="code actuel"):
+        app.start_paper("moving_average", manual=True)
+    assert app.paper.snapshot() == {}

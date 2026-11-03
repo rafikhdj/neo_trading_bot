@@ -56,13 +56,21 @@ class BacktestApp:
                 row["eligibility"] = eligibility_for(row, specs.get(key), policy)
             return {**state, "running": self.running, "policy": policy}
 
-    def start_paper(self, key):
+    def start_paper(self, key, manual=False):
         snapshot = self.snapshot()
         row = snapshot["strategies"].get(key)
-        if snapshot["running"] or not row or row["eligibility"]["status"] != "eligible":
+        if snapshot["running"] or not row:
+            raise ValueError("Attendre la fin du backtest avant de démarrer le paper.")
+        approval = deepcopy(row["eligibility"])
+        if approval["status"] == "not_tested":
+            raise ValueError("Relancer les backtests pour tester le code actuel avant le paper.")
+        if approval["status"] != "eligible" and not manual:
             raise ValueError("Stratégie non éligible : consulter les critères dans More.")
+        approval["manual"] = manual
+        if manual:
+            approval["manual_at"] = datetime.now(timezone.utc).isoformat()
         config = deepcopy(snapshot["config"])
-        self.paper.start(key, get_strategies()[key], config, row["eligibility"])
+        self.paper.start(key, get_strategies()[key], config, approval)
 
     def start(self, options):
         config = DEFAULT_CONFIG.copy()
@@ -186,7 +194,7 @@ def handler_for(app):
                 if not isinstance(options, dict):
                     raise ValueError("Configuration invalide")
                 if self.path == "/api/paper/start":
-                    app.start_paper(options.get("strategy"))
+                    app.start_paper(options.get("strategy"), manual=options.get("manual") is True)
                     self.send(200, {"started": True})
                     return
                 if self.path == "/api/paper/pause":
