@@ -3,9 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Neo — Strategy lab</title>
-<style>
-:root{color-scheme:dark;--bg:#101416;--panel:#191e21;--line:#30383b;--text:#edf0e9;--muted:#a3aeac;--lime:#d2f879;--red:#f99e91}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}header{display:flex;align-items:center;gap:18px;padding:22px 5%;border-bottom:1px solid var(--line)}.logo{font-size:26px;font-weight:850;letter-spacing:-2px}.logo span{color:var(--lime)}.tag,.badge{font-size:11px;letter-spacing:1px;text-transform:uppercase;border:1px solid var(--line);border-radius:5px;padding:6px 9px;color:var(--muted)}.right{margin-left:auto;color:var(--muted)}main{max-width:1400px;padding:42px 5%;margin:auto}.eyebrow{color:var(--lime);font-size:11px;letter-spacing:2px;text-transform:uppercase}h1{font-size:clamp(30px,4vw,46px);letter-spacing:-1.8px;margin:10px 0}p{color:var(--muted);line-height:1.6}nav{border-bottom:1px solid var(--line);margin:28px 0}nav span{display:inline-block;padding:14px 0;border-bottom:2px solid var(--lime)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;margin:20px 0}.config{display:flex;gap:18px;align-items:end;flex-wrap:wrap}label{display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:12px}input[type=number]{width:120px;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:11px;font:inherit}.check{flex-direction:row;align-items:center;align-self:center;max-width:200px}button{border:0;border-radius:6px;padding:12px 18px;font:600 13px system-ui;cursor:pointer;background:var(--lime);color:#18220e}button:disabled{opacity:.45;cursor:wait}.secondary{background:transparent;color:var(--text);border:1px solid var(--line);padding:8px 13px}button:focus-visible,input:focus-visible{outline:2px solid var(--lime);outline-offset:3px}.section-title{display:flex;align-items:center;gap:14px;justify-content:space-between}h2{font-size:18px;font-weight:550;margin:0}.sub{font-size:12px;color:var(--muted)}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;white-space:nowrap;text-align:left}th{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;font-weight:500;padding:18px 14px;border-bottom:1px solid var(--line)}td{padding:21px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}tbody tr:last-child td{border-bottom:0}.name{font-weight:600}.name small{display:block;font-weight:400;color:var(--muted);margin-top:6px;font-size:11px}.positive{color:var(--lime)}.negative{color:var(--red)}.status{font-size:11px;color:var(--muted)}.notice{padding:12px 16px;border-left:2px solid var(--lime);color:var(--muted);font-size:12px;line-height:1.7}.error{color:var(--red)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:22px 0}.stat{background:var(--bg);padding:18px;border:1px solid var(--line);border-radius:8px}.stat label{font-size:11px}.stat strong{display:block;font-size:24px;margin-top:10px;font-weight:500}.chart{width:100%;height:250px;display:block;margin-top:20px}.chart text{fill:var(--muted);font:11px system-ui}.empty{text-align:center;padding:40px;color:var(--muted)}#detail[hidden]{display:none}footer{color:var(--muted);font-size:11px;margin-top:30px;line-height:1.8}.chart-key{font-size:11px;color:var(--lime)}@media(max-width:750px){main{padding:25px 4%}.panel{padding:16px}.stats{grid-template-columns:repeat(2,1fr)}.right{display:none}.config{gap:12px}.config button{width:100%}td,th{padding:14px 10px}}
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header><div class="logo">neo<span>·</span></div><span class="tag">Strategy lab</span><span class="right">KRAKEN / SPOT / BTC–EUR</span></header>
@@ -20,47 +18,17 @@
 <label>Frais · % / ordre<input name="fee_rate" type="number" value="0.25" min="0" max="99" step="0.01" required></label>
 <label>Slippage · % / ordre<input name="slippage_rate" type="number" value="0.10" min="0" max="99" step="0.01" required></label>
 <label class="check"><input type="checkbox" name="refresh">Actualiser les bougies depuis Kraken</label>
+<label class="check"><input type="checkbox" name="repair">Compléter les trous historiques (plus lent)</label>
 <button id="run">Lancer les backtests ↗</button>
 </form><p class="sub">BTC/EUR · bougies 5 min · une position par stratégie · historique local par défaut.</p>
 <div id="message" role="status" aria-live="polite"></div></section>
 <div class="section-title"><h2>Stratégies</h2><span id="count" class="sub"></span></div>
 <section class="panel" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Stratégie</th><th>Statut</th><th>P&L net</th><th>Rendement</th><th>Drawdown max.</th><th>Win rate</th><th>Trades clôturés</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <div id="dataset" class="notice">Lancez les backtests pour analyser les données locales.</div>
-<section id="detail" class="panel" hidden tabindex="-1"></section>
+
 <footer>Frais et slippage : hypothèses configurables, pas des tarifs Kraken. Les positions ouvertes sont valorisées au dernier close, sans vente fictive.<br>Le backtest ne simule ni les minimums d’ordre, ni le spread variable, ni la liquidité. Les résultats historiques ne préjugent pas des résultats futurs.</footer>
 </main>
-<script>
-let state=null, selected=null, running=false;
-const $=s=>document.querySelector(s), money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:2}).format(n), pct=n=>new Intl.NumberFormat('fr-FR',{style:'percent',maximumFractionDigits:2}).format(n), date=t=>new Date(t).toLocaleString('fr-FR'), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const statuses={idle:'À lancer',pending:'En attente',running:'En cours…',done:'Terminé',error:'Erreur'};
-function chart(points){
- const values=points.map(p=>p.equity), low=Math.min(...values), high=Math.max(...values), range=high-low||1;
- const x=i=>65+i/(Math.max(points.length-1,1))*880, y=v=>205-(v-low)/range*175;
- const line=values.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
- return `<svg class="chart" viewBox="0 0 980 250" role="img" aria-label="Évolution du portefeuille en euros"><line x1="65" y1="205" x2="945" y2="205" stroke="#30383b"/><line x1="65" y1="30" x2="945" y2="30" stroke="#30383b"/><text x="0" y="35">${high.toFixed(2)} €</text><text x="0" y="210">${low.toFixed(2)} €</text><polyline points="${line}" fill="none" stroke="#d2f879" stroke-width="2"/><text x="65" y="240">${esc(date(points[0].timestamp))}</text><text x="945" y="240" text-anchor="end">${esc(date(points.at(-1).timestamp))}</text></svg>`;
-}
-function detail(){
- const panel=$('#detail'), row=state?.strategies[selected];
- if(!row?.result){panel.hidden=true;return}
- panel.hidden=false;
- const r=row.result,s=r.summary;
- const metrics=[['Portefeuille final',money(s.final_equity)],['P&L réalisé',money(s.realized_pnl)],['P&L latent',money(s.unrealized_pnl)],['Frais cumulés',money(s.fees)]];
- panel.innerHTML=`<div class="section-title"><h2>${esc(row.name)}</h2><button class="secondary" id="close">Fermer ×</button></div><p>${esc(row.description)}</p><div class="stats">${metrics.map(([k,v])=>`<div class="stat"><label>${k}</label><strong>${v}</strong></div>`).join('')}</div><div class="section-title"><span class="chart-key">● Valeur du portefeuille · EUR</span><span class="sub">Position finale : ${s.open_position?'ouverte':'aucune'} · Buy & hold brut, capital entier : ${pct(s.buy_hold_return)}</span></div>${chart(r.equity_curve)}<h2 style="margin-top:24px">Transactions simulées <span class="sub">(${r.trades.length})</span></h2><div class="table-wrap"><table><thead><tr><th>Date d’exécution</th><th>Ordre</th><th>Prix</th><th>Quantité BTC</th><th>Frais</th><th>Cash après ordre</th></tr></thead><tbody>${r.trades.map(t=>`<tr><td>${esc(date(t.timestamp))}</td><td class="${t.side==='BUY'?'positive':''}">${esc(t.side)}</td><td>${money(t.price)}</td><td>${t.quantity.toFixed(8)}</td><td>${money(t.fee)}</td><td>${money(t.capital)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucune transaction sur cette période.</td></tr>'}</tbody></table></div>`;
- $('#close').onclick=()=>{selected=null;panel.hidden=true};
-}
-function render(){
- running=state.running;$('#run').disabled=running;$('#run').textContent=running?'Calcul en cours…':'Lancer les backtests ↗';
- const entries=Object.entries(state.strategies);$('#count').textContent=`${entries.length} stratégies · portefeuille indépendant pour chacune`;
- $('#rows').innerHTML=entries.map(([key,row])=>{const s=row.result?.summary;return `<tr><td class="name">${esc(row.name)}<small>${esc(key)}</small></td><td><span class="status ${row.status==='error'?'error':''}">${statuses[row.status]||esc(row.status)}</span>${row.error?`<small class="error" style="display:block;white-space:normal;max-width:230px">${esc(row.error)}</small>`:''}</td><td class="${s?.pnl>=0?'positive':'negative'}">${s?money(s.pnl):'—'}</td><td>${s?pct(s.return):'—'}</td><td>${s?pct(s.max_drawdown):'—'}</td><td>${s&&s.closed_trades?pct(s.win_rate):'—'}</td><td>${s?s.closed_trades:'—'}</td><td><button class="secondary more" data-key="${esc(key)}" ${s?'':'disabled'}>More ↗</button></td></tr>`}).join('');
- document.querySelectorAll('.more').forEach(b=>b.onclick=()=>{selected=b.dataset.key;detail();$('#detail').scrollIntoView({behavior:'smooth',block:'start'});$('#detail').focus({preventScroll:true})});
- const d=state.dataset,c=state.config;
- if(d){$('#dataset').innerHTML=`${esc(date(d.start))} → ${esc(date(d.end))} · <strong>${d.candles.toLocaleString('fr-FR')} bougies</strong> · Capital ${money(c.capital)} · Position ${pct(c.position_size)} · Frais ${pct(c.fee_rate)} · Slippage ${pct(c.slippage_rate)}${d.gaps?`<br><span class="error">Historique discontinu : ${d.gaps} trou(s), environ ${d.missing_candles} bougies manquantes. Aucune interpolation : des signaux et variations intermédiaires peuvent manquer. Compléter l’historique avant de conclure.</span>`:''}`;}
- else $('#dataset').textContent=running?'Chargement et vérification des données…':'Lancez les backtests pour analyser les données locales.';
- detail();
-}
-async function load(){const response=await fetch('/api/results');if(!response.ok)throw Error('Serveur indisponible');state=await response.json();render()}
-$('#config').onsubmit=async e=>{e.preventDefault();$('#message').textContent='';$('#run').disabled=true;selected=null;const data=new FormData(e.target),options={refresh:data.has('refresh')};for(const k of ['capital','position_size','fee_rate','slippage_rate'])options[k]=Number(data.get(k))/(k==='capital'?1:100);try{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(options)});const body=await r.json();if(!r.ok)throw Error(body.error||'Un calcul est déjà en cours.');await load()}catch(err){$('#message').textContent=err.message;$('#run').disabled=running}};
-async function poll(){try{await load()}catch(err){$('#message').textContent='Connexion au dashboard interrompue. Vérifiez que le serveur Python tourne.'}setTimeout(poll,2000)}poll();
-</script>
+<script src="/common.js"></script>
+<script src="/index.js"></script>
 </body>
 </html>

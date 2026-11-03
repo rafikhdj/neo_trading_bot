@@ -114,8 +114,9 @@ def prepare_ohlcv(data):
     if not required.issubset(data.columns):
         raise ValueError("Colonnes OHLCV manquantes.")
     data = data.copy()
-    data["timestamp"] = pd.to_datetime(data["timestamp"], utc=True)
-    for column in required - {"timestamp"}:
+    data["timestamp"] = pd.to_datetime(data["timestamp"], utc=True).astype("datetime64[ns, UTC]")
+    numeric = (required - {"timestamp"}) | ({"vwap", "count"} & set(data.columns))
+    for column in numeric:
         data[column] = pd.to_numeric(data[column], errors="raise")
     if data.empty or data[list(required)].isna().any().any():
         raise ValueError("Données vides ou bougies incomplètes.")

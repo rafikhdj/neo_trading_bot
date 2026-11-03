@@ -14,3 +14,4 @@ backtest_results.json
 *.key
 .aws/
 .DS_Store
+*.tmp.parquet

@@ -6,10 +6,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 from threading import Lock, Thread
+from urllib.parse import urlsplit
 
 
 from backtest.report import DEFAULT_CONFIG, run_strategy
 from data.kraken import get_ohlcv, load_ohlcv
+from data.history import repair_history
 from strategies import get_strategies
 
 ROOT = Path(__file__).resolve().parent
@@ -66,7 +68,7 @@ class BacktestApp:
             self.state = {"config": config, "dataset": None, "updated_at": None,
                           "strategies": {key: {"name": spec["name"], "description": spec["description"],
                                                "status": "pending"} for key, spec in specs.items()}}
-        Thread(target=self.run, args=(specs, config, bool(options.get("refresh", False))), daemon=True).start()
+        Thread(target=self.run, args=(specs, config, bool(options.get("refresh", False)), bool(options.get("repair", False))), daemon=True).start()
         return True
 
     def persist(self):
@@ -77,9 +79,13 @@ class BacktestApp:
         temporary.write_text(text)
         temporary.replace(self.results_path)
 
-    def run(self, specs, config, refresh):
+    def run(self, specs, config, refresh, repair=False):
         try:
-            data = (get_ohlcv if refresh else load_ohlcv)(config["symbol"], config["interval"])
+            if repair:
+                data = repair_history(config["symbol"], config["interval"], refresh=refresh)
+            else:
+                loader = get_ohlcv if refresh else load_ohlcv
+                data = loader(config["symbol"], config["interval"])
             seconds = config["interval"] * 60
             gaps = data["timestamp"].diff().dt.total_seconds().dropna()
             with self.lock:
@@ -121,10 +127,22 @@ def handler_for(app):
             self.wfile.write(body)
 
         def do_GET(self):
-            if self.path == "/api/results":
+            path = urlsplit(self.path).path
+            if path == "/api/results":
                 self.send(200, app.snapshot())
-            elif self.path in {"/", "/index.html"}:
-                self.send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
+                return
+            files = {
+                "/": ("index.html", "text/html; charset=utf-8"),
+                "/index.html": ("index.html", "text/html; charset=utf-8"),
+                "/strategy": ("strategy.html", "text/html; charset=utf-8"),
+                "/style.css": ("style.css", "text/css; charset=utf-8"),
+                "/common.js": ("common.js", "text/javascript; charset=utf-8"),
+                "/index.js": ("index.js", "text/javascript; charset=utf-8"),
+                "/strategy.js": ("strategy.js", "text/javascript; charset=utf-8"),
+            }
+            if path in files:
+                filename, content_type = files[path]
+                self.send(200, (ROOT / filename).read_bytes(), content_type)
             else:
                 self.send(404, {"error": "Page introuvable"})
 

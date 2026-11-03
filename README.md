@@ -31,13 +31,28 @@ Le bouton « Lancer les backtests » teste toutes les stratégies :
 - Capital, taille de position, frais et slippage configurables.
 - Statuts en attente, en cours, terminé ou erreur.
 - P&L net, rendement du portefeuille, drawdown maximum, win rate et trades clôturés.
-- Bouton « More » : courbe du portefeuille, P&L réalisé et latent, frais et transactions.
+- Lien « More » : nouvel onglet dédié avec courbe du portefeuille, P&L réalisé et latent, frais et transactions.
 
 Les données sont lues dans `market_data/kraken/XBTEUR_5m.parquet` par défaut.
 Cocher « Actualiser les bougies depuis Kraken » pour appeler l'API publique et
 fusionner les dernières bougies clôturées. Aucune clé API n'est nécessaire.
-L'API OHLC ne fournit que les 720 dernières entrées : l'actualisation ne comble pas
-les anciens trous. Le dashboard affiche la période disponible et les trous
+[L’API OHLC Kraken](https://docs.kraken.com/api-reference/market-data/get-ohlc-data) ne fournit que les 720 dernières entrées : l'actualisation ne comble pas
+les anciens trous à lui seul. Pour les compléter, cocher aussi
+« Compléter les trous historiques (plus lent) » avant de lancer les backtests.
+Les échanges historiques [Kraken Trades](https://docs.kraken.com/api-reference/market-data/get-recent-trades)
+sont paginés, puis agrégés en bougies réelles.
+L'opération peut prendre plusieurs minutes ; une réparation terminée est
+sauvegardée après chaque trou. Aucun prix n'est interpolé et les périodes sans
+échange restent absentes. Pour réparer en ligne de commande :
+
+```sh
+.venv/bin/python -m data.history --refresh
+```
+
+La réparation complète seulement les trous entre les bougies présentes ; elle
+n'étend pas l'historique avant sa première bougie. Les téléchargements Kraken
+qui n'aboutissent pas ne remplacent pas le fichier du trou en cours.
+Le dashboard affiche la période disponible et les trous
 éventuels, sans interpoler les bougies. Des signaux et des variations peuvent
 manquer : compléter les données avant de conclure sur une stratégie.
 
