@@ -7,7 +7,7 @@ from strategies.robust_trend import strategy as robust
 from strategies.squeeze_breakout import strategy as squeeze
 from strategies.volume_mean_reversion import strategy as reversion
 from strategies.session_breakout import strategy as session
-from test_additional_strategies import bars
+from .test_additional_strategies import bars
 
 
 def test_normalized_momentum_needs_both_horizons_and_signal_over_noise():

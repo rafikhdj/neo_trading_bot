@@ -1,6 +1,6 @@
 from backtest.validation import assess, eligibility_for, load_policy
 from backtest.engine import backtest
-from test_backtest import make_data
+from .test_backtest import make_data
 
 
 def summary(trades=30, gain=.02, drawdown=.05):

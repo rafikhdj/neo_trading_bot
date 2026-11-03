@@ -3,7 +3,7 @@ import pytest
 
 from paper_trading.engine import DEFAULT_CONFIG, new_state, process_candle
 from paper_trading.manager import PaperManager
-from test_paper_trading import candles
+from .test_paper_trading import candles
 
 NOW = pd.Timestamp("2026-11-02 12:30", tz="UTC")
 

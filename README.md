@@ -208,6 +208,7 @@ sont des hypothèses, pas des tarifs Kraken. Spread variable et liquidité ne so
 
 ## Organisation
 
+- `test/` : tests automatisés.
 - `strategies/` : signaux des stratégies.
 - `data/` : lecture locale et récupération Kraken.
 - `backtest/` : exécution historique et métriques communes.
@@ -306,5 +307,5 @@ Les cas limites NaN, infinis et valeurs invalides du drawdown sont laissés pour
 plus tard, leurs tests sont conservés :
 
 ```sh
-.venv/bin/python -m pytest -q -k 'not invalid_equity_raises_value_error'
+.venv/bin/python -m pytest test/ -q -k 'not invalid_equity_raises_value_error'
 ```
