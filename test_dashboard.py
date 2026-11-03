@@ -17,7 +17,7 @@ def local_pair_rules(monkeypatch):
 
 
 def make_history():
-    close = list(range(100, 140)) + list(range(140, 100, -1)) * 2
+    close = list(range(100, 140)) + list(range(140, 100, -1)) * 24
     return pd.DataFrame({"timestamp": pd.date_range("2026-01-01", periods=len(close), freq="5min", tz="UTC"),
                          "open": close, "high": close, "low": close, "close": close, "volume": 1})
 

@@ -65,6 +65,28 @@ Une seule instance du dashboard doit utiliser ce fichier.
 - `strategies/moving_average.py` : moyennes simples 10/30.
 - `strategies/momentum.py` : variation sur 12 bougies.
 - `strategies/rsi.py` : RSI simple sur 14 variations, seuils 30/70.
+- `strategies/trend_breakout.py` : breakout horaire avec filtre de tendance.
+
+### Breakout horaire avec filtre de tendance
+
+Les bougies 5 min sont regroupées en heures complètes, sans utiliser les données
+futures. Une décision est prise uniquement à la clôture horaire, puis exécutée à
+l'ouverture de la bougie 5 min suivante par le même moteur.
+
+- Entrée : clôture au-dessus du plus haut des **20 heures précédentes**, au-dessus
+  d'une moyenne simple **72 h** orientée à la hausse.
+- Sortie : clôture sous le plus bas des **10 heures précédentes** ou sous la moyenne
+  72 h. Sinon, conservation de la position.
+- Une heure incomplète dans les 73 dernières heures interdit l'entrée et demande
+  la sortie d'une position existante. Pas de remplissage des trous.
+
+Les canaux excluent l'heure courante. Les paramètres 20/10/72 sont fixes et n'ont
+pas été optimisés sur le fichier local. Cette stratégie spot vise les tendances
+haussières et peut rester en cash pendant longtemps. Il n'y a pas de stop exécuté
+en cours d'heure : une variation intrahoraire n'est prise en compte qu'à la
+clôture. Un petit nombre de trades ne permet pas de conclure à sa rentabilité.
+Principe des canaux : [Donchian Channels — TradingView](https://www.tradingview.com/support/solutions/43000502253-donchian-channels-dc/).
+
 
 Pour en ajouter une, créer un module dans `strategies/` avec :
 
