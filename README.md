@@ -87,6 +87,46 @@ Références sur les indicateurs :
 [Volume — Schwab](https://workplace.schwab.com/story/trading-volume-as-market-indicator).
 
 
+### Candidats quantitatifs supplémentaires
+
+Cinq hypothèses supplémentaires sont implémentées dans des fichiers indépendants :
+
+- `volatility_momentum.py` : continuation à 24 h / 72 h, avec un seuil de mouvement
+  de 1 % et une normalisation par la volatilité. L'hypothèse est la persistance
+  des tendances ; le ratio de force n'est **pas** une statistique de significativité.
+- `robust_trend.py` : pente médiane de Theil–Sen des log-clôtures sur 48 h. Le seuil
+  d'entrée correspond à une pente de 1,5 % par jour, pas à une prévision de gain.
+  La médiane réduit l'influence d'un pic isolé, sans garantir une meilleure performance.
+- `squeeze_breakout.py` : sur 30 min, compression Bollinger / ATR puis cassure du
+  canal antérieur confirmée par le volume. Une compression ne prédit pas la
+  direction ; la cassure clôturée sert de confirmation. EMA20 amorcée sur 80 périodes.
+- `volume_mean_reversion.py` : sur 1 h, retour vers une moyenne de clôtures pondérée
+  par les volumes, après réintégration d'une déviation négative. Un filtre
+  d'efficacité directionnelle évite les tendances les plus nettes ; il ne prouve
+  pas la stationnarité. La référence exclut le prix et le volume courants.
+- `session_breakout.py` : sur 30 min, range fixe 00–02 h UTC, entrée avant 12 h,
+  signal de sortie dès 18 h. La session est une convention de recherche sur un
+  marché 24/7, **pas** une ouverture officielle. Un arrêt du programme peut retarder
+  l'exécution du signal horaire. VWMA des clôtures, pas VWAP des transactions.
+
+Les seuils sont définis avant l'évaluation ; aucun balayage des paramètres n'a
+été utilisé pour chercher un gagnant dans l'historique local. Les contrôles
+comprennent les frais et minimums Kraken, la validation chronologique habituelle,
+une simulation avec frais et slippage doublés et trois sous-périodes successives
+à portefeuilles indépendants (avec amorce des indicateurs sur le passé disponible).
+Ces vérifications ne transforment pas les données déjà consultées en véritable
+échantillon inédit. Un résultat nul sans trade n'est pas une preuve de qualité.
+Les données locales courtes ne suffisent pas à valider une stratégie à faible fréquence.
+
+Toutes les sorties sont évaluées à la clôture et exécutées sur la bougie suivante :
+il n'y a pas de stop intrabougie ni de dimensionnement dynamique selon le risque.
+Les candidats restent soumis au filtre de validation ; le mode manuel paper est
+une décision distincte. Aucun portefeuille existant n'est modifié par leur ajout.
+
+Références : [canaux ATR — Schwab](https://toslc.thinkorswim.com/center/reference/Tech-Indicators/studies-library/G-L/KeltnerChannels),
+[momentum des cryptomonnaies — article de recherche](https://www.sciencedirect.com/science/article/pii/S1062940821000590).
+Ces références motivent les familles d'indicateurs ; elles ne valident pas nos règles ni nos paramètres.
+
 ### Breakout horaire avec filtre de tendance
 
 Les bougies 5 min sont regroupées en heures complètes, sans utiliser les données

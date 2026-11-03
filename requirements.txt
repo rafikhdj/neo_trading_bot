@@ -2,3 +2,4 @@ pandas>=2.2
 requests>=2.32
 pyarrow>=18
 pytest>=8
+numpy>=1.26
