@@ -13,6 +13,79 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
+## API privée Kraken — lecture seule
+
+Le client `data/kraken_private.py` est indépendant du dashboard et des simulations.
+Il utilise `requests` et la bibliothèque standard, sans nouvelle dépendance.
+Ses seuls endpoints autorisés sont `Balance`, `OpenOrders` et `ClosedOrders`.
+Ces lectures utilisent HTTP POST, conformément à Kraken, mais ne passent aucun
+ordre et n'effectuent aucun transfert. Aucune URL d'API personnalisable n'est exposée.
+
+À la racine du projet, renseigner localement les deux champs de `.env.example`
+dans `.env` : `KRAKEN_API_KEY` et `KRAKEN_API_SECRET`. Ne pas modifier le modèle
+avec de vraies clés. Le `.env` est exclu de Git ; le fichier reste en clair et doit
+être protégé localement. Les variables d'environnement exportées priment sur le
+fichier, même si elles sont vides. Le chargement accepte `NOM=valeur`, des
+guillemets simples/doubles et `export`, sans interpolation de variables.
+
+Démonstration, depuis la racine :
+
+```sh
+.venv/bin/python -m data.kraken_private
+.venv/bin/python -m data.kraken_private --limit 5
+```
+
+La commande vérifie successivement les trois accès et affiche les soldes, les
+ordres ouverts et les derniers ordres clôturés. La réussite de `Balance` prouve
+uniquement cet accès ; une erreur ultérieure termine avec un statut d'échec.
+Code de sortie : 0 si les trois lectures réussissent, 1 en cas d'erreur, 130 si
+interruption au clavier. Les résultats du compte apparaissent dans le terminal,
+mais les clés, secrets, signatures et réponses brutes d'erreur ne sont pas affichés.
+
+Dans **Kraken Pro → Settings → API**, vérifier les permissions de la clé :
+
+- Funds permissions : **Query**.
+- Orders and trades : **Query open orders & trades** et **Query closed orders & trades**.
+- Laisser toutes les autres permissions décochées, notamment création/modification,
+  annulation, dépôts, retraits et adresses de retrait. WebSocket inutile ici.
+
+Le client limite ses appels aux trois lectures, mais ne peut pas certifier que la
+clé n'a pas d'autres droits : cette vérification se fait dans Kraken. Ne partager
+ni la clé ni le secret dans le chat, les logs ou Git.
+
+Authentification : formulaire URL-encodé, nonce en millisecondes strictement
+croissant dans le processus, HMAC-SHA512 du chemin + SHA256(nonce + corps),
+secret décodé depuis base64. Les appels signés sont sérialisés entre threads.
+Les redirections HTTP sont refusées. Les erreurs d'accès, HTTP, réseau, réponses
+invalides et limitations de débit produisent des messages contrôlés. Les erreurs
+ne sont pas réessayées automatiquement ; HTTP 429 expose le délai `Retry-After`
+quand il est exprimé en secondes. Attendre avant de relancer la commande.
+
+Limites de cette étape :
+
+- `Balance` fournit les soldes du portefeuille par défaut nets des retraits en
+  attente, **pas** le montant libre calculé après tous les ordres/réservations.
+- `ClosedOrders` lit seulement la première page de 50 résultats, trie les dates de
+  clôture décroissantes et en retourne au plus `--limit` (10 par défaut). Les ordres
+  annulés font partie des ordres clôturés. Pas de pagination exhaustive.
+- Utiliser une clé dédiée et un seul processus à la fois. Les nonces ne sont pas
+  coordonnés entre processus ni persistés ; une horloge reculée ou un autre client
+  utilisant la même clé peut provoquer `Invalid nonce`.
+- La 2FA spécifique aux actions de la clé API (`otp`) n'est pas prise en charge.
+- Il s'agit du compte réel **en lecture seule**, pas d'un environnement UAT,
+  d'une exécution d'ordres ou d'une connexion du paper au compte.
+
+Documentation officielle : [authentification](https://docs.kraken.com/exchange/guides/rest/authentication),
+[Balance](https://docs.kraken.com/api-reference/account-data/get-account-balance),
+[OpenOrders](https://docs.kraken.com/api-reference/account-data/get-open-orders),
+[ClosedOrders](https://docs.kraken.com/api-reference/account-data/get-closed-orders).
+
+Tests dédiés sans réseau ni credentials réels :
+
+```sh
+.venv/bin/python -m pytest test/test_kraken_private.py -q
+```
+
 ## Dashboard
 
 Depuis la racine du projet :
