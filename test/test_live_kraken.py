@@ -24,7 +24,7 @@ def response(result=None, errors=None, status=200):
 
 
 def row(status='closed', executed='.0001'):
-    return {'descr': {'pair': 'XBTEUR', 'type': 'buy', 'price': '50100', 'leverage': 'none'},
+    return {'descr': {'pair': 'XBTEUR', 'type': 'buy', 'ordertype': 'limit', 'price': '50100', 'leverage': 'none'},
             'cl_ord_id': 'client-1', 'vol': '.0001', 'vol_exec': executed, 'cost': '5' if D(executed) else '0',
             'fee': '.02' if D(executed) else '0', 'status': status, 'trades': ['trade-1'] if D(executed) else []}
 
@@ -105,3 +105,103 @@ def test_controlled_cancel(client):
     client.disarm()
     with pytest.raises(RuntimeError):
         client.cancel('order-1')
+
+
+@pytest.fixture
+def closed_fixture():
+    import json
+    from pathlib import Path
+    return json.loads((Path(__file__).parent / 'fixtures/kraken/query_closed_without_client_id.json').read_text())
+
+
+def test_known_txid_without_client_id_uses_durable_binding(client, closed_fixture):
+    client.auth._session.post = Mock(side_effect=[Mock(status_code=200, json=Mock(return_value=closed_fixture)),
+        response({'TEXAMPLE-TRADE-000001': {'ordertxid': 'OEXAMPLE-ORDER-000001', 'vol': '.0001', 'cost': '5', 'fee': '.02'}})])
+    result = client.find('durable-client-id', 'OEXAMPLE-ORDER-000001')
+    assert result['id'] == 'durable-client-id'
+    assert result['price'] == '50100.0'  # Pas le prix moyen 50000 à la racine.
+    assert result['status'] == 'filled'
+
+
+def test_known_txid_conflicting_client_id_blocks(client):
+    client.auth._session.post = Mock(return_value=response({'order-1': row('canceled', '0')}))
+    with pytest.raises(RuntimeError, match='Identifiant client incompatible'):
+        client.find('different-client', 'order-1')
+
+
+@pytest.mark.parametrize('cursor', ['absent', None, {'next': None}])
+def test_terminal_page_cursor_optional(client, cursor):
+    page = {'closed': {}, 'count': 0}
+    if cursor != 'absent':
+        page['cursor'] = cursor
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}), response(page)])
+    assert client.find('lost-client-id') is None
+    assert client.auth._session.post.call_count == 2
+
+
+@pytest.mark.parametrize('cursor', [{}, {'next': 42}, {'next': ''}, 'bad'])
+def test_malformed_cursor_blocks(client, cursor):
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}), response({'closed': {}, 'cursor': cursor})])
+    with pytest.raises(RuntimeError, match='Curseur'):
+        client.find('lost-client-id')
+
+
+def test_no_client_id_no_durable_txid_never_matches_amount(client):
+    r = row('canceled', '0')
+    del r['cl_ord_id']
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}), response({'closed': {'same-amount': r}})])
+    with pytest.raises(RuntimeError, match='sans txid durable'):
+        client.find('lost-client-id')
+
+
+@pytest.mark.parametrize('missing', ['descr', 'price', 'trades'])
+def test_missing_required_snapshot_data_blocks(client, missing):
+    r = row()
+    if missing == 'price':
+        del r['descr']['price']
+    else:
+        del r[missing]
+    client.auth._session.post = Mock(return_value=response({'order-1': r}))
+    with pytest.raises(RuntimeError):
+        client.find('client-1', 'order-1')
+
+
+@pytest.mark.parametrize('error', ['EOrder:Insufficient funds', 'EOrder:Unknown order', 'EOrder:Unknown error', 'EOrder:Rate limit exceeded'])
+def test_all_addorder_api_errors_remain_uncertain(client, error):
+    client.arm(CONFIRMATION)
+    client.auth._session.post = Mock(return_value=response(errors=[error]))
+    with pytest.raises(KrakenPrivateError) as exc:
+        client.submit(dict(id='client-1', side='buy', quantity='.0001', price='50100'))
+    assert not isinstance(exc.value, Rejected)
+    assert client.auth._session.post.call_count == 1
+
+
+@pytest.mark.parametrize('field,value', [('cost', '6'), ('fee', '.03'), ('vol', '.0002'), ('ordertxid', 'different')])
+def test_inconsistent_trade_totals_block(client, field, value):
+    trade = {'ordertxid': 'order-1', 'vol': '.0001', 'cost': '5', 'fee': '.02'}
+    trade[field] = value
+    client.auth._session.post = Mock(side_effect=[response({'order-1': row()}), response({'trade-1': trade})])
+    with pytest.raises(RuntimeError):
+        client.find('client-1', 'order-1')
+
+
+def test_engine_reconciles_known_txid_with_missing_client_id(client, closed_fixture, tmp_path):
+    from live_trading.engine import Engine
+    from test.test_live_trading import buy
+    engine = Engine(tmp_path / 'known.sqlite', client, buy, 'known')
+    try:
+        engine.journal.put('baseline', {'eur': '1000', 'btc': '0'})
+        order = dict(id='durable-client', candle='1', strategy='known', side='buy', quantity='.0001', price='50100')
+        engine.journal.prepare(order)
+        engine.journal.update(order['id'], 'unknown', txid='OEXAMPLE-ORDER-000001')
+        client.balances = Mock(return_value={'eur': D('994.98'), 'btc': D('.0001'), 'free_eur': D('994.98'), 'free_btc': D('.0001')})
+        # Lecture concurrente : l'ordre était encore ouvert, mais sans ID client.
+        client.open_orders = Mock(return_value=[{'id': None, 'txid': 'OEXAMPLE-ORDER-000001'}])
+        client.auth._session.post = Mock(side_effect=[Mock(status_code=200, json=Mock(return_value=closed_fixture)),
+            response({'TEXAMPLE-TRADE-000001': {'ordertxid': 'OEXAMPLE-ORDER-000001', 'vol': '.0001', 'cost': '5', 'fee': '.02'}})])
+        assert engine.reconcile()
+        assert engine.journal.orders()[0]['status'] == 'filled'
+        assert engine.portfolio()['btc'] == D('.0001')
+        assert not engine.enabled and not client.armed
+    finally:
+        engine.close()

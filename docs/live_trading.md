@@ -183,3 +183,88 @@ Les dix échecs sont dans
 `negative-infinite-intermediate-equity`, `positive-infinite-final-equity`,
 `negative-infinite-final-equity`. Ces cas limites du backtester, déjà mis de côté,
 n'ont pas été modifiés dans cette mission.
+
+## Suite de la revue PR #2 — contrats Kraken et résolution sûre
+
+Vérification documentaire du 3 novembre 2026, **sans requête privée, clé réelle
+ni ordre réel** :
+
+- Les schémas [QueryOrders](https://docs.kraken.com/api-reference/account-data/query-orders-info),
+  [OpenOrders](https://docs.kraken.com/api-reference/account-data/get-open-orders)
+  et [ClosedOrders](https://docs.kraken.com/api-reference/account-data/get-closed-orders)
+  déclarent `cl_ord_id` optionnel/nullable. Il n'est donc pas supposé systématique.
+  Avec un `txid` déjà enregistré durablement, une lecture ciblée de ce même ID
+  permet de conserver le lien client même si le champ est absent. Une valeur
+  contradictoire reste bloquante. Sans `txid` durable ni ID client explicite,
+  aucune association n'est déduite du montant, de la quantité ou du seul filtre.
+- `ClosedOrders` documente bien `cl_ord_id`, `with_cursor`, `cursor` et
+  `result.cursor.next`. Le curseur peut être absent/null quand il ne reste pas
+  de page ; c'était un défaut confirmé du premier MVP, maintenant corrigé.
+  Un curseur malformé/répété reste bloquant. Les trades sont demandés via
+  `trades=true`, mais le schéma précise « if data available » : les volumes,
+  coûts, frais et IDs doivent donc être vérifiés, jamais supposés disponibles.
+- Pour notre type `limit`, `descr.price` est le prix primaire de l'ordre ; le
+  champ `price` à la racine est le prix moyen exécuté. Le moteur vérifie le prix
+  primaire contre l'intention durable, le type `limit`, puis chaque prix exécuté
+  contre la limite. Un prix manquant/invalide bloque ; aucun repli sur le prix
+  moyen. Le schéma ne prouve pas la disponibilité réelle pour tous les états
+  IOC d'un compte : cette validation d'intégration reste à faire.
+- Aucune erreur API `AddOrder`, y compris `EOrder:*`, n'est considérée comme
+  preuve d'absence d'ordre. Elle entraîne `unknown`, désactivation et
+  réconciliation. Cela peut nécessiter une intervention même après un refus
+  véritable : compromis conservateur assumé. Aucun retry de création.
+
+Les fixtures sous `test/fixtures/kraken/` sont synthétiques et suivent les schémas
+publiés ; ce ne sont pas des captures de compte réel.
+
+### Procédure pour un ordre qui reste incertain
+
+1. Activer le kill switch du journal concerné et arrêter son moteur. Ne pas
+   renvoyer le signal, effacer le journal, ni créer un autre journal pour reprendre.
+2. Sauvegarder SQLite avec son API de backup, ou arrêter/fermer toutes les
+   connexions avant copie cohérente ; ne pas copier le seul fichier principal
+   pendant une écriture WAL.
+3. Consulter Kraken en lecture seule : rechercher les IDs client et Kraken,
+   ordres ouverts/clôturés et exécutions. Relancer la réconciliation si les
+   données étaient seulement retardées. Conserver les preuves sans secrets.
+4. Un `txid` déjà journalisé se réconcilie automatiquement même sans `cl_ord_id`.
+   Si le `txid` manque aussi, exiger une preuve fiable de l'association
+   intention/ordre (ID client explicite ou confirmation vérifiable de Kraken).
+   Ne jamais utiliser la seule proximité du montant ou de l'heure.
+5. Aucune commande de réparation forcée n'est livrée. Si une association ne peut
+   pas être prouvée, rester bloqué et demander l'assistance de Kraken. Si une
+   correction du journal est nécessaire, préparer une réparation ciblée,
+   sauvegardée, testée et soumise à revue avant application ; ne pas modifier
+   les statuts à la main pour contourner le blocage.
+6. Reprise uniquement après réconciliation complète, contrôles de risque
+   réussis et nouvelle activation explicitement autorisée par le propriétaire.
+
+### Politique de risque et simulateur après revue
+
+Le **drawdown est historique**, depuis l'enrôlement du journal : son plus haut
+n'est pas remis à zéro à minuit. Seule la référence de perte quotidienne change
+au passage de date UTC, vers la dernière equity observée ; le gap entre cette
+observation et la première du nouveau jour reste compté. Sans observations
+continues, ce n'est pas une valorisation exacte à minuit.
+
+Equity allouée = `min(solde EUR initial, capital) + equity du compte - solde EUR
+initial` (compte initialement FLAT). Ainsi 1000 EUR au compte avec 100 EUR alloués
+ne diluent pas le drawdown : une perte de 10 EUR porte sur 100, pas sur 1000.
+Les tests vérifient cette formule et le maintien du plus haut au changement de jour.
+Les quatre règles de marché sont converties/validées avant toute comparaison
+avec la position, même sur un signal HOLD.
+
+Le simulateur exécute à son prix courant uniquement si celui-ci respecte la
+limite : prix favorable ou égal pour l'acheteur/vendeur. Le scénario normal
+annule un IOC non négociable ; `partial` exécute une fraction et annule le reste.
+Les scénarios `open` et `transient_partial` sont des injections d'état transitoire
+pour tester surveillance et incidents ; ils ne prétendent pas représenter un
+IOC durable au carnet. Pas de modèle de liquidité ni de latence réelle.
+
+SQLite utilise désormais **WAL + synchronous=FULL**. Un test vérifie qu'une
+connexion de lecture voit le dernier commit pendant une transaction d'écriture
+exclusive, puis le nouveau commit. Ce mode ne constitue pas un verrou distribué.
+
+Validation après revue : **100 tests live réussis**, suite complète **275 réussis,
+10 échecs préexistants inchangés** ; le résultat historique
+« 45 » ci-dessus correspond à la livraison initiale et non à cette révision.

@@ -65,9 +65,9 @@ class SimulatedKraken:
             raise RuntimeError('Doublon exchange.')
         o = dict(order, txid=str(uuid.uuid4()), status='open', fills=[])
         self.state['orders'][order['id']] = o
-        if self.behavior in ('filled', 'partial', 'timeout'):
-            self.fill(order['id'], D('.5') if self.behavior == 'partial' else D(1))
-        if self.behavior == 'canceled':
+        if self.behavior in ('filled', 'partial', 'transient_partial', 'timeout'):
+            self.fill(order['id'], D('.5') if self.behavior in ('partial', 'transient_partial') else D(1))
+        if self.behavior in ('canceled', 'partial') or (self.behavior in ('filled', 'timeout') and o['status'] != 'filled'):
             o['status'] = 'canceled'
         self.save()
         if self.behavior == 'timeout':
@@ -76,6 +76,13 @@ class SimulatedKraken:
 
     def fill(self, oid, fraction=D(1)):
         o = self.state['orders'][oid]
+        if o['status'] not in ('open', 'partially_filled'):
+            raise RuntimeError('Ordre terminal : aucune nouvelle exécution simulée.')
+        if not D(0) < fraction <= D(1):
+            raise ValueError('Fraction d’exécution invalide.')
+        limit = D(o['price'])
+        if (o['side'] == 'buy' and self.price > limit) or (o['side'] == 'sell' and self.price < limit):
+            return
         done = sum((D(f['quantity']) for f in o['fills']), D(0))
         qty = (D(o['quantity']) - done) * fraction
         cost, fee = qty * self.price, qty * self.price * D('.004')

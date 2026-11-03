@@ -8,7 +8,6 @@ from urllib.parse import urlencode
 import requests
 from data.kraken_private import (KrakenPrivateClient, KrakenPrivateError,
     _REQUEST_LOCK, next_nonce, sign_request, _api_error)
-from .simulated import Rejected
 
 CONFIRMATION = 'ENABLE KRAKEN BTC/EUR'
 
@@ -52,8 +51,8 @@ class KrakenExecutionClient:
             if not isinstance(payload, dict) or not isinstance(payload.get('error'), list):
                 raise KrakenPrivateError('Réponse Kraken invalide.')
             if payload['error']:
-                if endpoint == 'AddOrder' and all(str(e).startswith('EOrder:') for e in payload['error']):
-                    raise Rejected('Ordre refusé par Kraken.')
+                # Même EOrder ne prouve pas l'absence d'un ordre côté exchange.
+                # Le moteur conservera unknown ; aucun renvoi automatique.
                 raise _api_error(payload['error'])
             if not isinstance(payload.get('result'), dict):
                 raise KrakenPrivateError('Résultat Kraken invalide.')
@@ -99,12 +98,27 @@ class KrakenExecutionClient:
                 'step': D(10) ** -int(row['lot_decimals']), 'tick': D(row['tick_size'])}
 
     def _snapshot(self, txid, row):
+        try:
+            return self._parse_snapshot(txid, row)
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            raise RuntimeError('Schéma Kraken incomplet : réconciliation bloquée.') from None
+
+    def _parse_snapshot(self, txid, row):
+        if row['descr']['ordertype'] != 'limit':
+            raise RuntimeError('Type d’ordre incompatible avec ce moteur limite IOC.')
+        limit = D(row['descr']['price'])
+        if not limit.is_finite() or limit <= 0:
+            raise RuntimeError('Prix limite Kraken absent ou invalide.')
         if row['descr']['pair'] not in ('XBTEUR', 'XXBTZEUR', 'XBT/EUR', 'BTC/EUR') or row['descr'].get('leverage', 'none') not in ('none', '0'):
             raise RuntimeError('Ordre incompatible avec le périmètre spot BTC/EUR.')
         fills = []
         ids = row.get('trades', [])
+        if not isinstance(ids, list) or any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids)):
+            raise RuntimeError('Liste des exécutions invalide.')
         for offset in range(0, len(ids), 20):
             records = self._call('QueryTrades', {'txid': ','.join(ids[offset:offset + 20])})
+            if set(records) != set(ids[offset:offset + 20]):
+                raise RuntimeError('Exécutions demandées incomplètes ou supplémentaires.')
             for fid, f in records.items():
                 if f['ordertxid'] != txid:
                     raise RuntimeError('Exécution attribuée à un autre ordre.')
@@ -126,9 +140,22 @@ class KrakenExecutionClient:
         return [self._snapshot(k, v) for k, v in self._call('OpenOrders', {'trades': 'true'})['open'].items()]
 
     def find(self, client_id, txid=None):
+        try:
+            return self._find(client_id, txid)
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            raise RuntimeError('Schéma de recherche Kraken incomplet ; aucun renvoi.') from None
+
+    def _find(self, client_id, txid=None):
         if txid:
             rows = self._call('QueryOrders', {'txid': txid, 'trades': 'true'})
-            return self._snapshot(txid, rows[txid]) if txid in rows else None
+            if txid not in rows:
+                return None
+            snapshot = self._snapshot(txid, rows[txid])
+            if snapshot['id'] not in (None, client_id):
+                raise RuntimeError('Identifiant client incompatible avec le txid enregistré.')
+            # Association fondée exclusivement sur le txid déjà durable, jamais le montant.
+            snapshot['id'] = client_id
+            return snapshot
         for row in self.open_orders():
             if row['id'] == client_id:
                 return row
@@ -140,9 +167,16 @@ class KrakenExecutionClient:
                 params['cursor'] = cursor
             result = self._call('ClosedOrders', params)
             for key, row in result['closed'].items():
+                if not row.get('cl_ord_id'):
+                    raise RuntimeError('Identifiant client absent sans txid durable : résolution manuelle requise.')
                 if row.get('cl_ord_id') == client_id:
                     matches.append((key, row))
-            cursor = result['cursor']['next']
+            page_cursor = result.get('cursor')
+            if page_cursor is not None and (not isinstance(page_cursor, dict) or 'next' not in page_cursor):
+                raise RuntimeError('Curseur Kraken malformé.')
+            cursor = page_cursor['next'] if page_cursor else None
+            if cursor is not None and (not isinstance(cursor, str) or not cursor):
+                raise RuntimeError('Curseur Kraken invalide.')
             if not cursor:
                 if len(matches) > 1:
                     raise RuntimeError('Plusieurs ordres pour une intention ; intervention requise.')

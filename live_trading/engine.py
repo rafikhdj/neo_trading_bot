@@ -96,7 +96,8 @@ class Engine:
             if len(opens) > 1:
                 raise RuntimeError('Plus d’un ordre ouvert.')
             known = {o['id'] for o in self.journal.orders()}
-            if any(o['id'] not in known for o in opens):
+            known_txids = {o['txid'] for o in self.journal.orders() if o['txid']}
+            if any(o['id'] not in known and not (o['id'] is None and o['txid'] in known_txids) for o in opens):
                 raise RuntimeError('Ordre externe détecté.')
             if self.journal.get('baseline') is None:
                 if balances['btc'] or opens or self.journal.orders():
@@ -108,7 +109,7 @@ class Engine:
                 snapshot = self.broker.find(o['id'], o['txid'])
                 if snapshot is None:
                     raise RuntimeError('Ordre introuvable : résultat incertain, aucun réessai.')
-                if snapshot['id'] != o['id'] or snapshot['side'] != o['side'] or D(snapshot['quantity']) != D(o['quantity']):
+                if snapshot['id'] != o['id'] or snapshot['side'] != o['side'] or D(snapshot['quantity']) != D(o['quantity']) or D(snapshot['price']) != D(o['price']):
                     raise RuntimeError('Identité de l’ordre incohérente.')
                 if snapshot['status'] not in {'open', 'partially_filled', 'filled', 'canceled', 'rejected'}:
                     raise RuntimeError('Statut non confirmé.')
@@ -216,11 +217,15 @@ class Engine:
                 raise RuntimeError('Signal invalide.')
             balances = self.broker.balances()
             rules = self.broker.rules()
+            try:
+                rules = {key: D(rules[key]) for key in ('minimum', 'costmin', 'step', 'tick')}
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                raise RuntimeError('Règles de marché invalides.') from None
+            if any(not v.is_finite() or v <= 0 for v in rules.values()):
+                raise RuntimeError('Règles de marché invalides.')
             positioned = balances['btc'] >= rules['minimum'] and balances['btc'] * quote['bid'] >= rules['costmin']
             if signal == 0 or (signal == 1 and positioned) or (signal == -1 and not positioned):
                 return None
-            if any(not D(v).is_finite() or D(v) <= 0 for v in rules.values()):
-                raise RuntimeError('Règles de marché invalides.')
             buy = signal == 1
             raw_price = quote['ask'] * (1 + self.limits.slippage) if buy else quote['bid'] * (1 - self.limits.slippage)
             price = (raw_price / rules['tick']).to_integral_value(rounding=ROUND_UP if buy else ROUND_DOWN) * rules['tick']

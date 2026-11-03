@@ -61,15 +61,15 @@ def test_buy_sell_equity_fees(setup):
     assert e.reconcile()
 
 
-@pytest.mark.parametrize('behavior,status', [('open','open'), ('partial','partially_filled'), ('rejected','rejected'), ('canceled','canceled')])
+@pytest.mark.parametrize('behavior,status', [('open','open'), ('transient_partial','partially_filled'), ('rejected','rejected'), ('canceled','canceled')])
 def test_statuses(setup, behavior, status):
     e, b = setup
     b.behavior = behavior
     start(e)
     e.cycle(candles(), now=1800000000)
     assert e.journal.orders()[0]['status'] == status
-    assert bool(e.journal.fills()) == (behavior == 'partial')
-    if behavior == 'partial':
+    assert bool(e.journal.fills()) == (behavior == 'transient_partial')
+    if behavior == 'transient_partial':
         p = e.portfolio()
         assert e.cancel(e.journal.orders()[0]['id'])
         assert e.portfolio() == p
@@ -280,7 +280,7 @@ def test_write_failure_after_accept_recovers(setup, monkeypatch):
 def test_unfilled_order_later_fills_once(setup):
     e, b = setup
     start(e)
-    b.behavior = 'partial'
+    b.behavior = 'transient_partial'
     oid = e.cycle(candles(), now=1800000000)
     partial = e.portfolio()['btc']
     b.fill(oid)
@@ -357,3 +357,95 @@ def test_prepared_is_abandoned_on_restart(setup):
         assert not new.journal.fills()
     finally:
         new.close()
+
+
+@pytest.mark.parametrize('field', ['minimum', 'costmin', 'step', 'tick'])
+@pytest.mark.parametrize('value', ['NaN', 'Infinity', '-1', '0', None, 'invalid'])
+def test_invalid_rules_checked_before_position_or_hold(setup, field, value):
+    e, b = setup
+    start(e)
+    rules = b.rules()
+    rules[field] = value
+    b.rules = lambda: rules
+    e.strategy = lambda data: 0
+    e.cycle(candles(), now=1800000000)
+    assert not e.enabled and not e.journal.orders()
+
+
+def test_allocated_equity_and_historical_drawdown_across_utc_midnight(setup):
+    e, b = setup
+    e.limits = Limits(daily_loss=D('1000'), drawdown=D('.1'))
+    before = pd.Timestamp('2026-11-03T23:59:59Z').timestamp()
+    assert e.activate(now=before)
+    assert D(e.journal.get('risk')['start']) == 100  # Solde 1000, capital alloué 100.
+    e.portfolio = lambda: {'eur': D(1020), 'btc': D(0), 'fees': D(0)}
+    e.risk(before)
+    e.portfolio = lambda: {'eur': D(1010), 'btc': D(0), 'fees': D(0)}
+    e.risk(before + 1)
+    stats = e.journal.get('risk')
+    assert stats['day'] == '2026-11-04'
+    assert D(stats['start']) == 120 and D(stats['peak']) == 120 and D(stats['last']) == 110
+    e.portfolio = lambda: {'eur': D(1007), 'btc': D(0), 'fees': D(0)}
+    with pytest.raises(RuntimeError, match='drawdown'):
+        e.risk(before + 2)
+
+
+def test_daily_loss_carries_gap_from_last_observation_at_midnight(setup):
+    e, b = setup
+    before = pd.Timestamp('2026-11-03T23:59:59Z').timestamp()
+    assert e.activate(now=before)
+    e.portfolio = lambda: {'eur': D(994), 'btc': D(0), 'fees': D(0)}
+    with pytest.raises(RuntimeError, match='perte'):
+        e.risk(before + 1)
+    assert D(e.journal.get('risk')['start']) == 100
+
+
+@pytest.mark.parametrize('side,price', [('buy','50200'), ('sell','49800')])
+def test_simulated_ioc_unmarketable_limit_cancels(side, price):
+    b = SimulatedKraken()
+    b.arm()
+    b.price = D(price)
+    before = b.balances()
+    oid = 'ioc-limit'
+    b.submit(dict(id=oid, side=side, quantity='.0001', price='50000'))
+    assert b.find(oid)['status'] == 'canceled' and not b.find(oid)['fills']
+    assert b.balances() == before
+
+
+def test_simulated_ioc_partial_cancels_remainder(setup):
+    e, b = setup
+    start(e)
+    b.behavior = 'partial'
+    oid = e.cycle(candles(), now=1800000000)
+    assert e.journal.orders()[0]['status'] == 'canceled'
+    assert e.portfolio()['btc'] == D(e.journal.orders()[0]['quantity']) / 2
+    assert not b.open_orders() and e.reconcile()
+    with pytest.raises(RuntimeError, match='terminal'):
+        b.fill(oid)
+
+
+def test_wal_reader_during_uncommitted_writer(setup):
+    e, b = setup
+    assert e.journal.db.execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
+    reader = sqlite3.connect(e.journal.path.resolve().as_uri() + '?mode=ro', uri=True, timeout=.1)
+    try:
+        e.journal.db.execute('BEGIN EXCLUSIVE')
+        e.journal.db.execute("INSERT INTO meta VALUES ('uncommitted','true')")
+        assert reader.execute("SELECT value FROM meta WHERE key='uncommitted'").fetchone() is None
+        assert reader.execute('SELECT count(*) FROM orders').fetchone()[0] == 0
+        e.journal.db.commit()
+        assert reader.execute("SELECT value FROM meta WHERE key='uncommitted'").fetchone()[0] == 'true'
+    finally:
+        e.journal.db.rollback()
+        reader.close()
+
+
+@pytest.mark.parametrize('field,value', [('price','99999'), ('quantity','.1'), ('side','sell')])
+def test_conflicting_order_identity_cannot_confirm_fills(setup, field, value):
+    e, b = setup
+    start(e)
+    b.behavior = 'open'
+    oid = e.cycle(candles(), now=1800000000)
+    b.state['orders'][oid][field] = value
+    assert not e.reconcile() and not e.enabled
+    assert not e.journal.fills()
