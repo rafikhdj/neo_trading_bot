@@ -17,3 +17,6 @@ backtest_results.json
 *.tmp.parquet
 
 paper_trading/states/
+
+# Journaux et état de simulation/live locaux
+live_trading/state/

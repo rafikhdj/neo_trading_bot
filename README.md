@@ -1,8 +1,9 @@
 # Neo · Bot Kraken
 
 Un fichier par stratégie, un moteur de backtest commun et un dashboard local.
-Le dashboard suit les backtests et le paper multi-stratégies. Le live reste
-hors périmètre : aucun ordre réel n’est envoyé.
+Le dashboard suit les backtests et le paper multi-stratégies. Un moteur live
+indépendant dispose d’un cycle dry-run ; il démarre désactivé. Aucun ordre réel
+n’a été envoyé pendant son développement. Voir [les commandes live](docs/live_trading.md).
 
 ## Installation
 
@@ -288,8 +289,10 @@ sont des hypothèses, pas des tarifs Kraken. Spread variable et liquidité ne so
 - `dashboard/` : serveur Python local et interface HTML sans dépendance JavaScript.
 - `market_data/` : historique Parquet.
 - `paper_trading/` : simulation multi-stratégies et sauvegardes séparées.
+- `live_trading/` : moteur BTC/EUR désactivé par défaut, journal SQLite et CLI dry-run.
 
-Le parcours est backtest, validation, puis paper. Le live n'est pas développé.
+Le parcours est backtest, validation, puis paper. Le moteur live reste séparé,
+sans lancement automatique ni dashboard live ; voir [sa documentation](docs/live_trading.md).
 Le fichier historique `paper_state.json` est conservé sans migration ; les
 nouveaux portefeuilles utilisent `paper_trading/states/`.
 
