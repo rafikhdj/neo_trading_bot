@@ -205,3 +205,72 @@ def test_engine_reconciles_known_txid_with_missing_client_id(client, closed_fixt
         assert not engine.enabled and not client.armed
     finally:
         engine.close()
+
+
+def test_closed_orders_request_preserves_filter_and_cursor_contract(client):
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}),
+        response({'closed': {}, 'cursor': {'next': 'opaque-token'}, 'count': 0}),
+        response({'closed': {'order-1': row('canceled', '0')}, 'count': 0})])
+    assert client.find('client-1')['status'] == 'canceled'
+    first, second = client.auth._session.post.call_args_list[1:]
+    for call in (first, second):
+        params = parse_qs(call.kwargs['data'])
+        assert params['cl_ord_id'] == ['client-1']
+        assert params['with_cursor'] == ['true'] and params['trades'] == ['true']
+        assert 'ofs' not in params and 'start' not in params and 'end' not in params
+        assert call.args[0].endswith('/ClosedOrders')
+    assert 'cursor' not in parse_qs(first.kwargs['data'])
+    assert parse_qs(second.kwargs['data'])['cursor'] == ['opaque-token']
+
+
+@pytest.mark.parametrize('status,executed', [('closed', '.0001'), ('canceled', '.00005')])
+def test_lost_reply_ioc_already_closed_reconciles_by_explicit_client_id(client, tmp_path, status, executed):
+    from live_trading.engine import Engine
+    from test.test_live_trading import buy
+    engine = Engine(tmp_path / 'lost-ioc.sqlite', client, buy, 'ioc')
+    try:
+        engine.journal.put('baseline', {'eur': '1000', 'btc': '0'})
+        order = dict(id='client-1', candle='1', strategy='ioc', side='buy', quantity='.0001', price='50100')
+        engine.journal.prepare(order)
+        engine.journal.update('client-1', 'unknown')  # Réponse d'envoi perdue : aucun txid connu.
+        cost, fee = D(executed) * 50000, D(executed) * 50000 * D('.004')
+        client.balances = Mock(return_value={'eur': D(1000) - cost - fee, 'btc': D(executed),
+            'free_eur': D(1000) - cost - fee, 'free_btc': D(executed)})
+        r = row(status, executed)
+        r.update(cost=str(cost), fee=str(fee))
+        # Deux lectures OpenOrders : contrôle des ordres externes, puis recherche de l'ID perdu.
+        client.auth._session.post = Mock(side_effect=[response({'open': {}}), response({'open': {}}),
+            response({'closed': {'order-1': r}, 'count': 0}),
+            response({'trade-1': {'ordertxid': 'order-1', 'vol': executed, 'cost': str(cost), 'fee': str(fee)}})])
+        assert engine.reconcile()
+        saved = engine.journal.orders()[0]
+        assert saved['txid'] == 'order-1' and saved['status'] == ('filled' if status == 'closed' else 'canceled')
+        assert engine.portfolio()['btc'] == D(executed)
+        assert len(engine.journal.fills()) == 1 and not engine.enabled and not client.armed
+        assert all(not c.args[0].endswith('/AddOrder') for c in client.auth._session.post.call_args_list)
+    finally:
+        engine.close()
+
+
+@pytest.mark.parametrize('missing_first', [True, False])
+def test_unrelated_history_without_id_blocks_even_with_matching_candidate(client, missing_first):
+    # On ne peut PAS prouver que la ligne sans ID est sans rapport avec l'intention.
+    unrelated = row('canceled', '0')
+    del unrelated['cl_ord_id']
+    candidate = row('canceled', '0')
+    entries = [('unrelated-old-order', unrelated), ('candidate-order', candidate)]
+    if not missing_first:
+        entries.reverse()
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}), response({'closed': dict(entries)})])
+    with pytest.raises(RuntimeError, match='sans txid durable'):
+        client.find('client-1')
+    assert client.auth._session.post.call_count == 2
+
+
+def test_repeated_cursor_cannot_confirm_a_partial_history_match(client):
+    client.auth._session.post = Mock(side_effect=[response({'open': {}}),
+        response({'closed': {'candidate-order': row('canceled', '0')}, 'cursor': {'next': 'same'}}),
+        response({'closed': {}, 'cursor': {'next': 'same'}})])
+    with pytest.raises(RuntimeError, match='Historique incomplet'):
+        client.find('client-1')
+    assert client.auth._session.post.call_count == 3

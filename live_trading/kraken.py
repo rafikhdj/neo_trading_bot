@@ -168,6 +168,8 @@ class KrakenExecutionClient:
             result = self._call('ClosedOrders', params)
             for key, row in result['closed'].items():
                 if not row.get('cl_ord_id'):
+                    # Réponse filtrée : sans ID, impossible de prouver que cette ligne
+                    # est sans rapport ou de garantir une association unique.
                     raise RuntimeError('Identifiant client absent sans txid durable : résolution manuelle requise.')
                 if row.get('cl_ord_id') == client_id:
                     matches.append((key, row))

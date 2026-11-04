@@ -268,3 +268,17 @@ exclusive, puis le nouveau commit. Ce mode ne constitue pas un verrou distribué
 Validation après revue : **100 tests live réussis**, suite complète **275 réussis,
 10 échecs préexistants inchangés** ; le résultat historique
 « 45 » ci-dessus correspond à la livraison initiale et non à cette révision.
+
+## Seconde revue PR #2
+
+La [note de contrat ClosedOrders](kraken_closed_orders_contract.md) donne les
+liens officiels, chemins OpenAPI et empreintes des documents consultés le
+4 novembre 2026. Elle distingue la compatibilité documentaire de la pagination
+et la validation réelle de l'exchange, toujours non réalisée. La politique de
+blocage sur une ligne anonyme dans une réponse filtrée est conservée et testée.
+Les reprises IOC clôturées après réponse perdue sont testées sans réseau.
+
+Validation de cette seconde revue : **106 tests live réussis** ; suite complète
+**281 réussis, les mêmes 10 échecs préexistants** de `test_metrics`. Aucun ordre
+réel envoyé et aucune activation ; les chiffres des sections précédentes
+retracent les révisions antérieures.
