@@ -87,6 +87,18 @@ Tests dédiés sans réseau ni credentials réels :
 .venv/bin/python -m pytest test/test_kraken_private.py -q
 ```
 
+## Diagnostic Kraken read-only (issue #3)
+
+```sh
+.venv/bin/python -m live_trading.verify_read_only --public-only
+.venv/bin/python -m live_trading.verify_read_only
+```
+
+La commande contrôle les permissions avant toute lecture du compte, refuse les
+clés trop permissives et n'affiche aucune valeur de compte ni identifiant.
+Elle ne démarre pas de moteur et ne modifie aucun journal. Voir les
+[commandes, résultats réels et contrôles encore à effectuer](docs/kraken_read_only_validation.md).
+
 ## Dashboard
 
 Depuis la racine du projet :
