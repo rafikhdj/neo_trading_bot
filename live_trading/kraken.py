@@ -33,7 +33,7 @@ class KrakenExecutionClient:
         self.armed = False
 
     def _call(self, endpoint, params=None):
-        allowed = {'BalanceEx', 'OpenOrders', 'ClosedOrders', 'QueryOrders', 'QueryTrades', 'AddOrder', 'CancelOrder'}
+        allowed = {'GetApiKeyInfo', 'BalanceEx', 'OpenOrders', 'ClosedOrders', 'QueryOrders', 'QueryTrades', 'AddOrder', 'CancelOrder'}
         if endpoint not in allowed or (endpoint in {'AddOrder', 'CancelOrder'} and not self.armed):
             raise RuntimeError('Endpoint interdit ou exécution désactivée.')
         with _REQUEST_LOCK:
