@@ -111,6 +111,9 @@ def run_experiment(strategy, parameters=None, *, symbol='XBTEUR', interval=5,
         values = frame[columns].to_numpy(dtype=float)
         if not np.isfinite(values).all() or (values[:, :4] <= 0).any() or (values[:, 4] < 0).any():
             raise ExperimentError('Prix/volumes invalides.')
+        epoch = pd.Timestamp('1970-01-01', tz='UTC')
+        if not frame['timestamp'].sub(epoch).mod(delta).eq(pd.Timedelta(0)).all():
+            raise ExperimentError('Timestamps non alignés sur la grille UTC de l’intervalle demandé.')
         if not frame['timestamp'].diff().dropna().eq(delta).all():
             raise ExperimentError('Trous ou timeframe incohérent dans la période.')
         if ((frame['high'] < frame[['open', 'close', 'low']].max(axis=1)) |

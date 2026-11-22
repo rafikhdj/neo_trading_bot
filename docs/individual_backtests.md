@@ -15,7 +15,10 @@ python -m backtest --strategy moving_average --params '{"short_window":5,"long_w
 Adapter la période aux données présentes. `interval` est en **minutes** ; frais,
 slippage et taille sont des fractions, pas des pourcentages. Sans `--json`, un
 résumé texte est affiché. Code de sortie `0` : completed ; `1` : erreur d'exécution
-structurée. Les erreurs de syntaxe des arguments/JSON restent des erreurs argparse
+structurée. Un échec des appels d'actualisation est classé `RefreshError` ; une
+exception inattendue du runner est classée `ExecutionError`, y compris après
+une actualisation réussie. Les erreurs structurées renvoyées normalement par
+`run_experiment` gardent leur catégorie d'origine. Les erreurs de syntaxe des arguments/JSON restent des erreurs argparse
 sur stderr, code `2`. Une stratégie inconnue avec `--json` renvoie un résultat
 structuré d'erreur, sans lancer d'autre stratégie.
 
@@ -134,12 +137,40 @@ slippage et taille de position du moteur. Pas de short, levier, pyramiding ou
 liquidation finale : la dernière position reste valorisée au close final et
 les frais d'une vente hypothétique ne sont pas ajoutés.
 
+Les ouvertures doivent aussi être sur la grille UTC de l'intervalle, ancrée à
+l'époque Unix (1970-01-01T00:00:00Z) : des bougies espacées de 5 minutes mais
+commençant à 00:01, ou décalées d'une seconde/nanoseconde, sont refusées. Ce
+contrôle s'applique aux bougies sélectionnées après conversion UTC, pas au fuseau
+affiché ni à la borne start demandée ; aucune correction/translation silencieuse.
+
 L'interface individuelle refuse trous, timestamps dupliqués/désordonnés, valeurs
 non finies, volumes négatifs et OHLC incohérents dans les données sélectionnées.
 Le chargeur local existant normalise/trie/déduplique déjà le Parquet ; ces
 normalisations précèdent les contrôles de l'interface. Le batch historique n'est
 pas durci par cette mission et peut donc avoir un comportement différent sur
 une entrée invalide ou discontinue.
+
+## Limites du snapshot local de règles Kraken
+
+`config.market_rules` conserve le snapshot réellement appliqué, dont `fetched_at`
+s'il existe. Cet horodatage indique la récupération des règles, **pas** leur
+période de validité historique. Les mêmes `ordermin`, `costmin` et `lot_decimals`
+sont appliqués uniformément à toutes les dates de l'expérience. Un snapshot
+récupéré après la période testée peut donc imposer des contraintes qui n'étaient
+pas en vigueur à l'époque ; cela peut changer les refus d'ordres et les métriques.
+
+Hors `--refresh`, aucun contrôle d'âge/TTL ni vérification auprès de Kraken n'est
+fait. Un cache ancien peut ne plus représenter les règles actuelles ; un cache
+récent ne prouve pas les règles historiques. Pas de règles « as of », d'évolution
+des minimums/précisions ou de grille historique des frais. Les frais et le
+slippage restent les taux explicites de la configuration, pas ceux du compte.
+Les règles injectées par Python ont les mêmes limites et relèvent de l'appelant.
+
+Pour comparer des expériences, conserver le même snapshot et le résultat complet
+avec les données/configurations. `--refresh` peut modifier ce snapshot pour les
+expériences suivantes. Ces limites sont documentées sans ajouter de filtre de
+fraîcheur, de données historiques supplémentaires ou de nouvelle hypothèse
+au moteur d'exécution.
 
 ## Limites pour de futurs agents
 
@@ -176,3 +207,30 @@ macOS/iCloud. Les vérifications ont été exécutées dans un venv temporaire h
 du dépôt, avec les mêmes versions des dépendances principales que le projet :
 pandas 3.0.6, NumPy 2.5.4, pytest 9.1.1, pyarrow 26.0.0, requests 2.34.2.
 Le `.venv` du projet et `requirements.txt` n'ont pas été modifiés.
+
+### Revue finale de la PR #5
+
+Les erreurs CLI distinguent désormais la phase d'actualisation de la phase
+runner. Les tests garantissent que le Sharpe inclut les rendements nuls de
+l'amorce et diffère du ratio obtenu en la supprimant. L'alignement est vérifié
+sur la grille UTC d'époque Unix pour chaque intervalle supporté, y compris les
+bougies hebdomadaires et 15 jours ; une simple régularité des écarts ne suffit pas.
+
+Résultats après corrections : **60 tests ciblés réussis** ; suite complète
+**368 réussis, 10 échecs préexistants**. La suite du commit précédent `ed7e176`
+a été relancée sur une extraction propre dans le même environnement temporaire :
+**351 réussis, les mêmes 10 échecs**. Comparaison des listes d'échecs identique,
+aucune régression détectée. Aucun test exclu ou masqué.
+
+Tous les échecs concernent
+`test/test_metrics.py::test_invalid_equity_raises_value_error` :
+`negative-intermediate-equity`, `negative-equity-after-zero`,
+`nan-initial-equity`, `nan-intermediate-equity`, `nan-final-equity`,
+`positive-infinite-initial-equity`, `positive-infinite-intermediate-equity`,
+`negative-infinite-intermediate-equity`, `positive-infinite-final-equity`,
+`negative-infinite-final-equity`.
+
+Les contrôles automatisés utilisent les fixtures hors réseau. L'ancrage UTC a
+également été comparé par lecture publique d'OHLC Kraken en 5 min, 7 jours et
+15 jours, sans écriture de cache. Aucun appel privé ou ordre, aucune activation,
+et aucune modification du live ou des hypothèses du moteur de backtest.

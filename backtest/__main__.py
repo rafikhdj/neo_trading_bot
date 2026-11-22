@@ -29,16 +29,21 @@ def main():
             or any(getattr(args, k) != DEFAULT_CONFIG[k] for k in ('capital', 'position_size', 'fee_rate', 'slippage_rate'))):
         parser.error('Les options d’expérience exigent --strategy ; le batch historique reste inchangé.')
     if args.strategy:
+        stage = 'refresh'
         try:
             if args.refresh:
                 get_ohlcv(args.symbol, args.interval)
                 get_pair_rules(args.symbol, refresh=True)
+            stage = 'execution'
             result = run_experiment(args.strategy, args.params, symbol=args.symbol, interval=args.interval,
                 start=args.start, end=args.end, config={k: getattr(args, k) for k in ('capital', 'position_size', 'fee_rate', 'slippage_rate')})
         except Exception:
             result = {'schema_version': 1, 'status': 'error',
                       'strategy': {'name': args.strategy, 'parameters': {}, 'source_hash': None},
-                      'dataset': None, 'config': None, 'details': None, 'error': {'type': 'RefreshError', 'message': 'Actualisation des données impossible.'}, 'metrics': None}
+                      'dataset': None, 'config': None, 'details': None, 'error': {
+                          'type': 'RefreshError' if stage == 'refresh' else 'ExecutionError',
+                          'message': 'Actualisation des données impossible.' if stage == 'refresh'
+                          else 'Échec inattendu pendant le backtest individuel.'}, 'metrics': None}
         if args.json:
             print(json.dumps(result, ensure_ascii=False, allow_nan=False))
         elif result['status'] == 'completed':

@@ -228,3 +228,73 @@ def test_default_signals_match_previous_formulas(name):
             rsi = (100 if gain > 0 else 50) if loss == 0 else 100 - 100 / (1 + gain / loss)
             expected = 1 if rsi < 30 else (-1 if rsi > 70 else 0)
         assert strategy(history) == expected
+
+
+@pytest.mark.parametrize('refresh,fail_refresh,expected', [
+    (False, False, 'ExecutionError'),
+    (True, False, 'ExecutionError'),
+    (True, True, 'RefreshError'),
+])
+def test_cli_error_category_matches_failed_stage(monkeypatch, capsys, refresh, fail_refresh, expected):
+    from backtest import __main__ as cli
+    refresh_data = Mock(side_effect=RuntimeError('raw private detail') if fail_refresh else None)
+    refresh_rules = Mock(return_value=RULES)
+    execute = Mock(side_effect=RuntimeError('raw private detail'))
+    monkeypatch.setattr(cli, 'get_ohlcv', refresh_data)
+    monkeypatch.setattr(cli, 'get_pair_rules', refresh_rules)
+    monkeypatch.setattr(cli, 'run_experiment', execute)
+    argv = ['backtest', '--strategy', 'moving_average', '--json']
+    if refresh:
+        argv.append('--refresh')
+    monkeypatch.setattr('sys.argv', argv)
+    assert cli.main() == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result['status'] == 'error' and result['error']['type'] == expected
+    assert result['metrics'] is None and result['details'] is None
+    assert 'raw private detail' not in output
+    assert refresh_data.call_count == int(refresh)
+    assert execute.call_count == int(not fail_refresh)
+
+
+def test_sharpe_keeps_zero_returns_during_indicator_warmup():
+    result = run(parameters={'short_window': 2, 'long_window': 20})
+    assert result['status'] == 'completed'
+    equity = np.array([p['equity'] for p in result['details']['equity_curve']])
+    returns = np.diff(equity) / equity[:-1]
+    warmup = result['dataset']['warmup_candles']
+    # Pas de position avant le signal de la 20e clôture, exécuté sur l'open suivant.
+    assert len(returns) == result['dataset']['rows'] - 1
+    assert np.all(returns[:warmup - 1] == 0)
+    assert np.any(returns[warmup - 1:] != 0)
+    annualization = math.sqrt(365 * 24 * 60 / result['dataset']['interval_minutes'])
+    expected_full = returns.mean() / returns.std(ddof=1) * annualization
+    trading_only = returns[warmup - 1:]
+    expected_without_warmup = trading_only.mean() / trading_only.std(ddof=1) * annualization
+    assert result['metrics']['sharpe_ratio'] == pytest.approx(expected_full)
+    assert result['metrics']['sharpe_ratio'] != pytest.approx(expected_without_warmup)
+
+
+@pytest.mark.parametrize('offset', ['1min', '1s', '1ns'])
+def test_equally_spaced_but_off_grid_candles_rejected(offset):
+    frame = data()
+    frame['timestamp'] += pd.Timedelta(offset)
+    assert frame['timestamp'].diff().dropna().eq(pd.Timedelta(minutes=5)).all()
+    result = run(data=frame)
+    assert result['status'] == 'error'
+    assert 'alignés' in result['error']['message']
+
+
+@pytest.mark.parametrize('interval', [1, 5, 15, 30, 60, 240, 1440, 10080, 21600])
+def test_aligned_candle_grid_supported_intervals(interval):
+    frame = data(interval=interval)
+    origin = pd.Timestamp('2020-01-01', tz='UTC').floor(f'{interval}min')
+    frame['timestamp'] = pd.date_range(origin, periods=len(frame), freq=f'{interval}min')
+    result = run(data=frame, interval=interval)
+    assert result['status'] == 'completed'
+
+
+def test_alignment_uses_utc_not_input_timezone():
+    frame = data(interval=60)
+    frame['timestamp'] = frame['timestamp'].dt.tz_convert('Asia/Kathmandu')
+    assert run(data=frame, interval=60)['status'] == 'completed'
