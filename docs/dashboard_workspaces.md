@@ -15,7 +15,8 @@ framework frontend ni changement des moteurs de trading.
   découverts dans `live_trading/state`. Aucun bouton d'activation, d'ordre ou
   d'annulation, aucun appel Kraken.
 
-Les boutons par ligne sont remplacés par **Détails** et un menu natif dépliable,
+Les boutons par ligne sont remplacés par **Détails** (nouvel onglet, comme
+auparavant) et un menu natif dépliable,
 utilisable au clavier (Échap pour fermer). Les actions paper utilisent exactement
 les API et contrôles de validation existants. Le dashboard ne contourne pas le
 serveur : démarrage manuel seulement après un backtest courant selon le mécanisme
