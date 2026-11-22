@@ -1,0 +1,138 @@
+{
+  "moving_average": {
+    "cadence": "5 min",
+    "entry": "SMA courte > SMA longue.",
+    "exit": "SMA courte ≤ SMA longue.",
+    "formulas": [
+      "SMAₙ(t) = (1/n) Σᵢ₌₀ⁿ⁻¹ Cₜ₋ᵢ"
+    ],
+    "limits": "Fenêtres 10 / 30 par défaut ; pas de filtre de volatilité. Les frais pénalisent les changements fréquents.",
+    "source_hash": "142a432bdac91877bb9a7455d9abaaf17d67c6be0e6b798bbb68fee0184fdcc4"
+  },
+  "momentum": {
+    "cadence": "5 min",
+    "entry": "Cₜ > Cₜ₋₁₂ par défaut.",
+    "exit": "Cₜ ≤ Cₜ₋₁₂.",
+    "formulas": [
+      "Signal = signe(Cₜ − Cₜ₋ₗ), l = lookback"
+    ],
+    "limits": "Simple direction sur une fenêtre ; aucune normalisation du bruit ou seuil de mouvement.",
+    "source_hash": "2d495d701672f72c8d891be5c7d01f4e6624e7d50fd17cdbbf1445208895ae82"
+  },
+  "rsi": {
+    "cadence": "5 min",
+    "entry": "RSI < 30 par défaut.",
+    "exit": "RSI > 70 ; entre les seuils, conserver.",
+    "formulas": [
+      "ΔCₜ = Cₜ − Cₜ₋₁",
+      "G = moyenne(max(ΔC, 0)), L = moyenne(max(−ΔC, 0))",
+      "RSI = 100 − 100 / (1 + G/L)"
+    ],
+    "limits": "Moyennes simples, pas le lissage de Wilder. Si L = 0 : RSI = 100 si G > 0, sinon 50.",
+    "source_hash": "76c16fd5030eeaa5f3f508ff909676f46ce8d37f77353a1a81c001159e5154be"
+  },
+  "trend_breakout": {
+    "cadence": "1 h, entrée 5 min",
+    "entry": "C dépasse le plus haut des 20 heures précédentes ; C > SMA72 et SMA72 en hausse.",
+    "exit": "C sous le plus bas des 10 heures précédentes ou sous SMA72.",
+    "formulas": [
+      "Hₙ = max(H des n bougies précédentes)",
+      "Lₙ = min(L des n bougies précédentes)",
+      "SMA72(t) > SMA72(t−1)"
+    ],
+    "limits": "Décision à la clôture horaire ; 12 bougies 5 min par heure requises. Heure incomplète : sortie.",
+    "source_hash": "db595bab13de763ad0aed00f377df813cda4dfc2fcd0df0a0887bc277af1ae03"
+  },
+  "trend_pullback": {
+    "cadence": "1 h, entrée 5 min",
+    "entry": "SMA20 > SMA50 en hausse ; franchissement de SMA20 après repli et C > SMA20 précédente.",
+    "exit": "C < SMA50 ou C sous le plus bas des 6 heures précédentes.",
+    "formulas": [
+      "SMAₙ = ΣC/n",
+      "Cₜ₋₁ ≤ SMA20(t−1), Cₜ > SMA20(t)"
+    ],
+    "limits": "52 heures de référence complètes ; sensible aux faux départs en marché sans tendance.",
+    "source_hash": "1e5e4c83b9f2cff93d0ef619ae1af94571233583050b319cdedfd3dc4171e946"
+  },
+  "robust_trend": {
+    "cadence": "1 h, entrée 5 min",
+    "entry": "Pente médiane > log(1,015)/24 et C > moyenne48.",
+    "exit": "Pente ≤ 0 ou C < moyenne24.",
+    "formulas": [
+      "s = médiane((log Cⱼ − log Cᵢ)/(j−i)), i < j, sur 48 clôtures"
+    ],
+    "limits": "Pente descriptive de log-prix, pas une prévision ; données horaires complètes nécessaires.",
+    "source_hash": "d909aa9750015261f7a5f8bb18b97aca920f7a8a8fd3236684bec437ec68966e"
+  },
+  "bollinger_range": {
+    "cadence": "15 min, entrée 5 min",
+    "entry": "Réintégration de la bande basse ; variation SMA48 sur 8 périodes < 0,5 % ; distance à SMA20 ≥ 1 %.",
+    "exit": "C ≥ SMA20 ou nouvelle rupture de la bande basse.",
+    "formulas": [
+      "Basse = SMA20 − 2σ20 (ddof=0)",
+      "Range : |SMA48(t)/SMA48(t−8) − 1| < 0,005",
+      "Distance = SMA20/C − 1"
+    ],
+    "limits": "60 bougies 15 min complètes ; hypothèse de retour à la moyenne, vulnérable aux tendances prolongées.",
+    "source_hash": "fd504ddb2d10ca6a3a0aa1e165ac4edea99d6e8aad5299c8ddb014c40255b409"
+  },
+  "session_breakout": {
+    "cadence": "30 min, entrée 5 min",
+    "entry": "Entre 02 et 12 h UTC : franchissement du range 00–02 h, largeur 0,5–3 %, volume > 1,5× moyenne du range, C > VWMA de session.",
+    "exit": "Sous VWMA ou bas du range ; sortie avant 02 h ou dès 18 h UTC.",
+    "formulas": [
+      "VWMA = Σ(CᵢVᵢ)/ΣVᵢ",
+      "Largeur = (Hrange − Lrange)/C dernière bougie du range"
+    ],
+    "limits": "Session UTC choisie, pas une ouverture officielle crypto. La moyenne de volume porte sur les 4 bougies du range initial.",
+    "source_hash": "38d9b0daf6e2cd16e55313918cfae0b89479d07bdc111c68d6a32c5728aa85f2"
+  },
+  "squeeze_breakout": {
+    "cadence": "30 min, entrée 5 min",
+    "entry": "Compression précédente, cassure du plus haut20 précédent, C > SMA50 et volume > moyenne20 précédente.",
+    "exit": "C < EMA20 ou plus bas des 6 périodes précédentes.",
+    "formulas": [
+      "TR = max(H−L, |H−Cpréc|, |L−Cpréc|)",
+      "ATR20 = moyenne20(TR)",
+      "Compression : 4σ20 < 3ATR20",
+      "EMAₜ = αCₜ + (1−α)EMAₜ₋₁, α=2/21, adjust=False"
+    ],
+    "limits": "80 bougies 30 min complètes. ATR simple ; compression et confirmation ne garantissent pas la continuation.",
+    "source_hash": "d88d756ff5e501a16aee8c68d3319e900270ad8d81150b7d82c2643bdd7126bc"
+  },
+  "volatility_momentum": {
+    "cadence": "1 h, entrée 5 min",
+    "entry": "R24 > 1 %, R72 > 0 et force > 1.",
+    "exit": "R24 ≤ 0.",
+    "formulas": [
+      "Rₙ = Cₜ/Cₜ₋ₙ − 1",
+      "rᵢ = log(Cᵢ/Cᵢ₋₁)",
+      "Force = Σ₂₄r / (max(écart-type(r, ddof=1), 10⁻⁶) √24)"
+    ],
+    "limits": "74 heures complètes ; ratio descriptif, pas un test de significativité.",
+    "source_hash": "9f940e7c3b93b9240b183c19f02fb98671196229ebbc0bae5de0c28c68147ef7"
+  },
+  "volume_breakout": {
+    "cadence": "30 min, entrée 5 min",
+    "entry": "C > plus haut20 précédent ; C > SMA50 ; volume > 1,5× moyenne20 précédente.",
+    "exit": "C < SMA20 ou plus bas6 précédent.",
+    "formulas": [
+      "V̄20 = Σ V précédents / 20",
+      "Vₜ > 1,5 V̄20"
+    ],
+    "limits": "50 bougies 30 min complètes ; confirmation par volume, sans carnet ni garantie de liquidité.",
+    "source_hash": "2071c4657c549f1f0c1aa3dab020a02d5b88f910b1a60398ac2ae298a19244c8"
+  },
+  "volume_mean_reversion": {
+    "cadence": "1 h, entrée 5 min",
+    "entry": "Efficacité < 0,25 ; z précédent < −2 puis −2 < z < −1 ; distance à la moyenne ≥ 1 %.",
+    "exit": "C ≥ moyenne pondérée ou z < −3.",
+    "formulas": [
+      "μ = ΣwᵢCᵢ/Σwᵢ ; σ = √(Σwᵢ(Cᵢ−μ)²/Σwᵢ)",
+      "z = (C−μ)/σ, références sur 24 clôtures précédentes",
+      "Efficacité = |Cₜ−Cₜ₋₂₄| / Σ₂₄|ΔC|"
+    ],
+    "limits": "VWMA de clôtures, pas VWAP des échanges. Volumes ou dispersions nuls : sortie ; 48 heures complètes requises.",
+    "source_hash": "6af8c2272dba52d9704773180e328eb258038967e3d835876272245cb2bb8819"
+  }
+}

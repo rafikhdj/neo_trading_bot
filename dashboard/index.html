@@ -8,9 +8,11 @@
 <body>
 <header><div class="logo">neo<span>·</span></div><span class="tag">Strategy lab</span><span class="right">KRAKEN / SPOT / BTC–EUR</span></header>
 <main>
-<div class="eyebrow">Recherche & simulation</div><h1>Les stratégies, à l’épreuve des données.</h1>
-<p>Comparez les backtests sur un même historique. Explorez chaque résultat avant de passer à la suite.</p>
-<nav><span>Backtests</span><a href="/paper">Paper</a></nav>
+<div class="eyebrow">Strategy Lab</div><h1>Recherche & backtests</h1>
+<p>Évaluez les stratégies, comparez leurs résultats et consultez leurs environnements enregistrés.</p>
+<nav aria-label="Espaces"><a href="/" aria-current="page">Strategy Lab</a><a href="/paper">Paper Trading</a><a href="/live">Live Trading</a></nav>
+<div class="workspace-summary" id="workspace-summary" aria-live="polite"></div>
+<details class="panel simulation-options"><summary>Configuration des backtests <span class="sub">Capital, frais et données</span></summary>
 <section class="panel"><div class="section-title"><h2>Paramètres de simulation</h2><span class="badge">Aucun ordre réel</span></div>
 <form id="config" class="config" style="margin-top:22px">
 <label>Capital initial · EUR<input name="capital" type="number" value="50" min="0.01" max="1000000000" step="0.01" required></label>
@@ -19,17 +21,21 @@
 <label>Slippage · % / ordre<input name="slippage_rate" type="number" value="0.10" min="0" max="99" step="0.01" required></label>
 <label class="check"><input type="checkbox" name="refresh">Actualiser les bougies depuis Kraken</label>
 <label class="check"><input type="checkbox" name="repair">Compléter les trous historiques (plus lent)</label>
-<button id="run">Lancer les backtests ↗</button>
+<button id="run">Lancer les backtests</button>
 </form><p class="sub">BTC/EUR · bougies 5 min · une position par stratégie · historique local par défaut.</p>
-<div id="message" role="status" aria-live="polite"></div></section>
+<div id="message" role="status" aria-live="polite"></div></section></details>
 <div class="section-title"><h2>Stratégies</h2><span id="count" class="sub"></span></div>
-<section class="panel" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Stratégie</th><th>Statut</th><th>P&L net</th><th>Rendement</th><th>Drawdown max.</th><th>Win rate</th><th>Trades clôturés</th><th>Tentatives refusées</th><th>Validation paper</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<div class="toolbar"><div class="filters" role="group" aria-label="Filtrer les stratégies"><button data-filter="all" aria-pressed="true">Toutes</button><button data-filter="paper" title="Portefeuilles enregistrés, en cours ou en pause" aria-pressed="false">En paper</button><button data-filter="live" title="Journaux réels enregistrés ; activité du moteur non observable" aria-pressed="false">En live</button><button data-filter="untested" aria-pressed="false">À tester</button></div><label class="search-label"><span class="sr-only">Rechercher une stratégie par nom</span><input id="search" type="search" placeholder="Rechercher une stratégie…" autocomplete="off"></label></div>
+<p class="sub">Paper : portefeuilles enregistrés, en cours ou en pause. Live : journaux réels enregistrés ; activité du moteur non observable.</p>
+<div id="sources-message" class="notice" role="status"></div>
+<section class="panel strategy-list"><div class="table-wrap"><table class="responsive-table"><thead><tr><th>Stratégie</th><th>Backtest</th><th>Environnement</th><th>P&amp;L net</th><th>Rendement</th><th>Drawdown max.</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <div id="policy" class="notice"></div>
 <div id="dataset" class="notice">Lancez les backtests pour analyser les données locales.</div>
 
 <footer>Frais et slippage : hypothèses configurables, pas des tarifs Kraken. Les positions ouvertes sont valorisées au dernier close, sans vente fictive.<br>Minimums d’ordre et précision des quantités appliqués selon les règles Kraken sauvegardées. Spread variable et liquidité non simulés. Les résultats historiques ne préjugent pas des résultats futurs.</footer>
 </main>
 <script src="/common.js"></script>
+<script src="/workspace.js"></script>
 <script src="/index.js"></script>
 </body>
 </html>

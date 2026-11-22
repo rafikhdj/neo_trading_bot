@@ -15,6 +15,8 @@ from paper_trading.manager import PaperManager
 from data.kraken import get_ohlcv, load_ohlcv, get_pair_rules
 from data.history import repair_history
 from strategies import get_strategies
+from dashboard.live_view import live_snapshot
+from dashboard.strategy_notes import strategy_definition
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT.parent / "backtest_results.json"
@@ -29,8 +31,9 @@ def json_default(value):
 
 
 class BacktestApp:
-    def __init__(self, results_path=RESULTS, paper_dir=None):
+    def __init__(self, results_path=RESULTS, paper_dir=None, live_dir=None):
         self.results_path = results_path
+        self.live_dir = live_dir or results_path.parent / "live_trading" / "state"
         self.paper = PaperManager(paper_dir or results_path.parent / "paper_trading" / "states")
         self.lock = Lock()
         self.running = False
@@ -50,6 +53,7 @@ class BacktestApp:
                 state["strategies"].setdefault(key, {
                     "name": spec["name"], "description": spec["description"], "status": "idle",
                 })
+                state["strategies"][key]["definition"] = strategy_definition(key, spec)
             policy = load_policy()
             specs = get_strategies()
             for key, row in state["strategies"].items():
@@ -157,6 +161,9 @@ def handler_for(app):
             if path == "/api/results":
                 self.send(200, app.snapshot())
                 return
+            if path == "/api/live":
+                self.send(200, live_snapshot(app.live_dir))
+                return
             if path == "/api/paper":
                 self.send(200, app.paper.snapshot())
                 return
@@ -164,6 +171,9 @@ def handler_for(app):
                 "/": ("index.html", "text/html; charset=utf-8"),
                 "/index.html": ("index.html", "text/html; charset=utf-8"),
                 "/paper": ("paper.html", "text/html; charset=utf-8"),
+                "/live": ("live.html", "text/html; charset=utf-8"),
+                "/live.js": ("live.js", "text/javascript; charset=utf-8"),
+                "/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"),
                 "/paper.js": ("paper.js", "text/javascript; charset=utf-8"),
                 "/strategy": ("strategy.html", "text/html; charset=utf-8"),
                 "/style.css": ("style.css", "text/css; charset=utf-8"),

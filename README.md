@@ -101,6 +101,12 @@ Elle ne démarre pas de moteur et ne modifie aucun journal. Voir les
 
 ## Dashboard
 
+Trois espaces : **Strategy Lab**, **Paper Trading**, **Live Trading**. Le Lab
+propose recherche/filtres et une fiche détaillée par stratégie ; les actions paper
+restent dans le menu contextuel. Le live consulte uniquement les journaux réels,
+sans activer le moteur ni déduire qu'il est en cours. Voir les
+[sources de statuts, limites et tests de l'interface](docs/dashboard_workspaces.md).
+
 Depuis la racine du projet :
 
 ```sh
