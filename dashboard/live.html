@@ -1,0 +1,8 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Neo — Live Trading</title><link rel="stylesheet" href="/style.css"></head>
+<body><header><div class="logo">neo<span>·</span></div><span class="tag">Live Trading</span><span class="right">KRAKEN / SPOT / BTC–EUR</span></header>
+<main><div class="eyebrow">Journaux réels · consultation</div><h1>Live Trading</h1><p>Ordres et exécutions enregistrés localement. Aucun contrôle d’activation ou d’envoi d’ordre.</p>
+<nav aria-label="Espaces"><a href="/">Strategy Lab</a><a href="/paper">Paper Trading</a><a href="/live" aria-current="page">Live Trading</a></nav>
+<div class="notice">L’activité et l’activation du moteur ne sont pas observables dans SQLite. Un journal ne prouve pas qu’une stratégie tourne. Les données ci-dessous ne sont pas une réconciliation Kraken en temps réel.</div>
+<div id="message" role="status" aria-live="polite"></div><div id="content"></div>
+<footer>Lecture des journaux .sqlite / .sqlite3 / .db du dossier live_trading/state uniquement. Les journaux dry-run sont exclus. Les journaux placés ailleurs ne sont pas découverts. Aucun appel Kraken.</footer></main>
+<script src="/common.js"></script><script src="/workspace.js"></script><script src="/live.js"></script></body></html>
