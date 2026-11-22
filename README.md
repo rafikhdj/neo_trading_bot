@@ -292,6 +292,17 @@ sont des hypothèses, pas des tarifs Kraken. Spread variable et liquidité ne so
 
 `main.py` reste un point d'entrée compatible pour le backtest.
 
+Backtest individuel configurable et résultat JSON :
+
+```sh
+python -m backtest --strategy moving_average --params '{"short_window":5,"long_window":20}' --symbol XBTEUR --interval 5 --start 2026-10-01 --end 2026-11-01 --json
+```
+
+API Python : `from backtest.experiment import run_experiment`. Voir les
+[paramètres, hypothèses, métriques et limites pour les agents](docs/individual_backtests.md).
+Les données et règles locales sont obligatoires hors actualisation explicite.
+
+
 ## Organisation
 
 - `test/` : tests automatisés.
